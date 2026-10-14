@@ -1,506 +1,965 @@
-
+```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>야자 탈출</title>
 <style>
-*{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101525;font-family:Arial,sans-serif}
-canvas{display:block;width:100vw;height:100vh}
-#help{position:fixed;top:10px;left:10px;z-index:2;background:#000c;color:white;padding:10px 13px;border-radius:10px;line-height:1.5;font-size:14px;pointer-events:none}
-#nextFloor{display:none;position:fixed;right:12px;top:12px;z-index:3;padding:12px 16px;border:0;border-radius:10px;background:#ffd34e;font-weight:bold;cursor:pointer}
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #101522;
+  font-family: Arial, sans-serif;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+#hud {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  color: white;
+  background: rgba(12, 17, 31, 0.82);
+  border: 2px solid rgba(255,255,255,.22);
+  border-radius: 12px;
+  padding: 10px 14px;
+  line-height: 1.65;
+  font-weight: bold;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+#help {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  color: white;
+  background: rgba(12, 17, 31, 0.75);
+  border-radius: 10px;
+  padding: 8px 13px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#message {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  background: rgba(5, 9, 18, .72);
+  color: white;
+  text-align: center;
+  padding: 24px;
+}
+
+#message.hidden {
+  display: none;
+}
+
+.panel {
+  max-width: 440px;
+  width: 100%;
+  padding: 28px 24px;
+  border-radius: 18px;
+  background: #1b2437;
+  border: 2px solid #52617e;
+  box-shadow: 0 18px 60px rgba(0,0,0,.4);
+}
+
+.panel h1 {
+  margin: 0 0 12px;
+  font-size: 30px;
+}
+
+.panel p {
+  line-height: 1.7;
+  color: #d5deef;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 24px;
+  background: #ffca55;
+  color: #24202a;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+button:hover {
+  background: #ffdb80;
+}
 </style>
 </head>
 <body>
-<div id="help">
-← → / A D : 이동<br>
-Space / ↑ / W : 점프<br>
-장애물에 닿으면 목숨 감소<br>
-목숨 3개 소진 시 현재 층 재시작
-</div>
-<button id="nextFloor">다음 층으로 ▶</button>
+
 <canvas id="game"></canvas>
+
+<div id="hud">
+  <div>🏫 야자 탈출</div>
+  <div id="floorText">층: 1</div>
+  <div id="lifeText">남은 목숨: 3</div>
+</div>
+
+<div id="help">이동: A / D 또는 ← / → · 점프: W / ↑ / Space · 재시작: R</div>
+
+<div id="message">
+  <div class="panel">
+    <h1 id="messageTitle">야자 탈출</h1>
+    <p id="messageText">
+      학교를 빠져나가자!<br>
+      발판을 밟고 장애물을 피해 탈출해.
+    </p>
+    <button id="startButton">게임 시작</button>
+  </div>
+</div>
+
 <script>
-const canvas=document.getElementById('game');
-const ctx=canvas.getContext('2d');
-const nextButton=document.getElementById('nextFloor');
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-const school=new Image();
-const character=new Image();
-const assets=new Image();
+const floorText = document.getElementById("floorText");
+const lifeText = document.getElementById("lifeText");
+const message = document.getElementById("message");
+const messageTitle = document.getElementById("messageTitle");
+const messageText = document.getElementById("messageText");
+const startButton = document.getElementById("startButton");
 
-school.src='./school.png';
-character.src='./character.png';
-assets.src='./assets.png';
+const school = new Image();
+school.src = "school.png";
 
-let W=innerWidth,H=innerHeight,dpr=1;
-let ready=false,finished=false;
-let currentFloor=4,lives=3,cameraX=0,lastTime=0;
-let MAP_SCALE=3.5,mapY=0,mapWidth=0,floorY=0;
-let platforms=[],hazards=[],movingPlatforms=[];
+const characterImage = new Image();
+characterImage.src = "character.png";
 
-const player={
- x:40,y:0,w:58,h:78,
- speed:5.5,jumpPower:16.5,vy:0,
- onGround:false,facing:1,invuln:0,frame:0,anim:0
+const assets = new Image();
+assets.src = "assets.png";
+
+let W = window.innerWidth;
+let H = window.innerHeight;
+let dpr = Math.max(1, window.devicePixelRatio || 1);
+
+let MAP_SCALE = 3.5;
+let mapY = H * -1.08;
+let mapWidth = W + 1;
+let floorY = H * 0.80;
+
+let cameraX = 0;
+let currentFloor = 1;
+let lives = 3;
+let running = false;
+let gameOver = false;
+let won = false;
+let lastTime = 0;
+let elapsed = 0;
+
+const keys = {};
+
+const player = {
+  x: 90,
+  y: 0,
+  w: 38,
+  h: 48,
+  vx: 0,
+  vy: 0,
+  speed: 4.3,
+  jump: 11.8,
+  grounded: false,
+  invulnerable: 0,
+  facing: 1
 };
 
-const SPR={
- long:   {x:16,y:108,w:294,h:72},
- medium: {x:331,y:108,w:131,h:72},
- small:  {x:487,y:108,w:64,h:72},
- block:  {x:571,y:94,w:106,h:88},
- wide:   {x:697,y:109,w:153,h:72},
+let platforms = [];
+let hazards = [];
+let movingPlatforms = [];
 
- spikes: {x:1264,y:276,w:110,h:68},
- ceiling:{x:797,y:408,w:160,h:74},
- redLaser:{x:958,y:416,w:168,h:66},
- verticalLaser:{x:1137,y:403,w:94,h:145},
- saw:{x:1267,y:431,w:91,h:87},
- blueLaser:{x:1373,y:421,w:135,h:111}
+const SPR = {
+  long:         {x:16,   y:108, w:294, h:72},
+  medium:       {x:331,  y:108, w:131, h:72},
+  small:        {x:487,  y:108, w:64,  h:72},
+  block:        {x:571,  y:94,  w:106, h:88},
+  wide:         {x:697,  y:109, w:153, h:72},
+  spikes:       {x:1264, y:276, w:110, h:68},
+  ceiling:      {x:797,  y:408, w:160, h:74},
+  redLaser:     {x:958,  y:416, w:168, h:66},
+  verticalLaser:{x:1137, y:403, w:94,  h:145},
+  saw:          {x:1267, y:431, w:91,  h:87},
+  blueLaser:    {x:1373, y:421, w:135, h:111}
 };
 
-const resize=()=>{
- W=innerWidth;
- H=innerHeight;
- dpr=window.devicePixelRatio||1;
- canvas.width=Math.round(W*dpr);
- canvas.height=Math.round(H*dpr);
- canvas.style.width=W+'px';
- canvas.style.height=H+'px';
- ctx.setTransform(dpr,0,0,dpr,0,0);
+const spriteReady = (sprite) =>
+  assets.complete &&
+  assets.naturalWidth > 0 &&
+  sprite.x + sprite.w <= assets.naturalWidth &&
+  sprite.y + sprite.h <= assets.naturalHeight;
 
- if(school.naturalWidth&&character.naturalWidth){
-  MAP_SCALE=3.5;
-  mapWidth=Math.max(W+1,school.naturalWidth*MAP_SCALE);
-  mapY=H*-0.65;
-  floorY=H*.80;
- }
+const drawSprite = (sprite, x, y, w, h) => {
+  if (spriteReady(sprite)) {
+    ctx.drawImage(
+      assets,
+      sprite.x, sprite.y, sprite.w, sprite.h,
+      x, y, w, h
+    );
+    return true;
+  }
+  return false;
 };
 
-const setup=(reset=true)=>{
- if(!school.naturalWidth||!character.naturalWidth)return;
+const resize = () => {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  dpr = Math.max(1, window.devicePixelRatio || 1);
 
- MAP_SCALE=3.5;
- mapWidth=Math.max(W+1,school.naturalWidth*MAP_SCALE);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
 
- // 배경을 크게 유지하되 바닥과 게임 화면은 아래에 가려지지 않도록 배치
- mapY=H*-0.65;
- floorY=H*.80;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
- if(reset){
-  generateLevel();
-  resetPlayer();
- }
- ready=true;
+  mapY = H * -1.08;
+  floorY = H * 0.80;
+
+  if (platforms.length === 0) {
+    mapWidth = Math.max(W + 1, (school.naturalWidth || 900) * MAP_SCALE);
+    platforms.push({
+      x: 0,
+      y: floorY,
+      w: mapWidth,
+      h: 90,
+      type: "ground"
+    });
+  }
 };
 
-const generateLevel=()=>{
- platforms=[];
- hazards=[];
- movingPlatforms=[];
+const resetPlayer = () => {
+  player.x = 90;
+  player.y = floorY - player.h;
+  player.vx = 0;
+  player.vy = 0;
+  player.grounded = false;
+  player.invulnerable = 1.2;
+  player.facing = 1;
+  cameraX = 0;
+};
 
- // 오브젝트 수를 크게 늘림
- const total=48+(4-currentFloor)*16;
- const spacing=(mapWidth-380)/total;
-
- for(let i=0;i<total;i++){
-  const x=150+i*spacing;
-  const variant=i%5;
-  let type='medium',w=112;
-
-  if(variant===0){type='long';w=170}
-  if(variant===1){type='medium';w=112}
-  if(variant===2){type='small';w=70}
-  if(variant===3){type='block';w=90}
-  if(variant===4){type='wide';w=145}
-
-  const height=i%6===0?170:i%3===0?120:75+(i%2)*25;
-  const y=floorY-height;
-
-  platforms.push({x,y,w,h:27,type});
-
-  // 바닥 가시
-  if(i%2===1||(currentFloor<=2&&i%3===0)){
-   hazards.push({
-    x:x+w+Math.max(12,spacing*.14),
-    y:floorY-34,w:58,h:34,type:'spikes'
-   });
-  }
-
-  // 발판 주변의 가시
-  if(currentFloor<=3&&i%6===2){
-   hazards.push({
-    x:x+w+14,y:y-45,w:54,h:34,type:'spikes'
-   });
-  }
-
-  // 천장 가시
-  if(currentFloor<=3&&i%8===4){
-   hazards.push({
-    x:x+20,y:y-100,w:100,h:48,type:'ceiling'
-   });
-  }
-
-  // 수평 레이저
-  if(currentFloor<=3&&i%9===5){
-   hazards.push({
-    x:x+w+20,y:y-52,w:100,h:35,type:'redLaser'
-   });
-  }
-
-  // 수직 레이저와 회전 톱은 최종 층에 추가
-  if(currentFloor===1&&i%11===6){
-   hazards.push({
-    x:x+w+15,y:y-90,w:38,h:78,type:'verticalLaser'
-   });
-  }
-
-  if(currentFloor===1&&i%10===3){
-   hazards.push({
-    x:x+w+18,y:y-42,w:44,h:44,type:'saw'
-   });
-  }
-
-  if(currentFloor===1&&i%12===8){
-   hazards.push({
-    x:x+w+18,y:y-66,w:76,h:50,type:'blueLaser'
-   });
-  }
- }
-
- // 움직이는 발판
- for(let i=0;i<Math.floor(total/5);i++){
-  const x=300+i*spacing*5;
-  const y=floorY-190-(i%3)*30;
-
-  movingPlatforms.push({
-   x,y,baseX:x,baseY:y,w:120,h:27,
-   phase:i*1.4,direction:i%2===0?1:-1,
-   type:i%2===0?'long':'medium'
+const addPlatform = (x, y, w, h, type, moving) => {
+  platforms.push({
+    x: x,
+    y: y,
+    w: w,
+    h: h,
+    type: type || "platform"
   });
- }
 
- platforms.unshift({
-  x:30,y:floorY-60,w:170,h:27,type:'long'
- });
-
- platforms.push({
-  x:mapWidth-205,y:floorY-70,w:170,h:27,type:'long'
- });
+  if (moving) {
+    movingPlatforms.push({
+      x: x,
+      startX: x,
+      y: y,
+      w: w,
+      h: h,
+      range: moving.range,
+      speed: moving.speed,
+      phase: moving.phase || 0
+    });
+  }
 };
 
-const resetPlayer=()=>{
- player.x=35;
- player.y=floorY-player.h;
- player.vy=0;
- player.onGround=true;
- player.facing=1;
- player.frame=0;
- player.anim=0;
- player.invuln=1000;
- cameraX=0;
+const addHazard = (x, y, w, h, type, movement) => {
+  hazards.push({
+    x: x,
+    y: y,
+    w: w,
+    h: h,
+    type: type,
+    baseY: y,
+    movement: movement || null,
+    phase: Math.random() * Math.PI * 2
+  });
 };
 
-school.onload=()=>setup(true);
-character.onload=()=>setup(true);
-assets.onload=()=>draw();
+const generateLevel = () => {
+  platforms = [];
+  hazards = [];
+  movingPlatforms = [];
 
-school.onerror=()=>console.error('school.png 파일을 확인해 주세요.');
-character.onerror=()=>console.error('character.png 파일을 확인해 주세요.');
-assets.onerror=()=>console.error('assets.png 파일을 확인해 주세요.');
+  mapY = H * -1.08;
+  floorY = H * 0.80;
 
-window.addEventListener('resize',()=>{
- resize();
- setup(false);
+  const backgroundWidth =
+    (school.naturalWidth || 900) * MAP_SCALE;
+
+  mapWidth = Math.max(
+    W * 2.8,
+    backgroundWidth,
+    3600 + (4 - currentFloor) * 500
+  );
+
+  addPlatform(0, floorY, mapWidth, 100, "ground");
+
+  const gapPattern = [
+    170, 205, 145, 245, 180, 220,
+    155, 260, 190, 150, 230, 175
+  ];
+
+  const heightPattern = [
+    72, 105, 138, 82, 165, 112,
+    65, 145, 92, 180, 120, 78
+  ];
+
+  let x = 320;
+  let i = 0;
+
+  while (x < mapWidth - 400) {
+    const gap = gapPattern[(i * 5 + currentFloor) % gapPattern.length];
+    const height = heightPattern[(i * 7 + currentFloor * 2) % heightPattern.length];
+
+    x += gap;
+
+    const widthPattern = [130, 180, 105, 155, 220, 120, 170];
+    const platformWidth =
+      widthPattern[(i * 3 + currentFloor) % widthPattern.length];
+
+    let y = floorY - height;
+
+    if (i % 9 === 3) {
+      y = floorY - 205;
+    }
+
+    if (i % 11 === 6) {
+      y = floorY - 45;
+    }
+
+    let type = "medium";
+
+    if (platformWidth >= 200) {
+      type = "long";
+    } else if (platformWidth <= 125) {
+      type = "small";
+    } else if (i % 4 === 1) {
+      type = "wide";
+    }
+
+    addPlatform(x, y, platformWidth, 24, type);
+
+    if (i % 7 === 2 && x + platformWidth + 60 < mapWidth - 200) {
+      addPlatform(
+        x + platformWidth + 55,
+        y - 65,
+        100,
+        24,
+        "small"
+      );
+    }
+
+    if (i % 10 === 5 && currentFloor <= 3) {
+      addPlatform(
+        x + platformWidth + 25,
+        y + 82,
+        120,
+        24,
+        "medium"
+      );
+    }
+
+    if (i % 8 === 4 && currentFloor <= 3) {
+      addPlatform(
+        x + platformWidth + 85,
+        y - 105,
+        110,
+        24,
+        "small"
+      );
+    }
+
+    if (i % 6 === 2 && currentFloor <= 3) {
+      addPlatform(
+        x + platformWidth + 45,
+        floorY - 250,
+        140,
+        24,
+        "medium"
+      );
+    }
+
+    if (i % 8 === 1) {
+      addPlatform(
+        x + platformWidth + 25,
+        floorY - 125,
+        100,
+        24,
+        "moving",
+        {
+          range: 85,
+          speed: 0.75 + currentFloor * 0.12,
+          phase: i
+        }
+      );
+    }
+
+    const hazardChance = (i + currentFloor) % 6;
+
+    if (hazardChance === 1 && x > 520) {
+      addHazard(
+        x + 35,
+        floorY - 40,
+        70,
+        38,
+        "spikes"
+      );
+    }
+
+    if (hazardChance === 4 && currentFloor <= 3) {
+      addHazard(
+        x + platformWidth + 25,
+        y - 22,
+        105,
+        34,
+        "saw",
+        { amplitude: 32, speed: 1.8 }
+      );
+    }
+
+    if (i % 13 === 7 && currentFloor <= 3) {
+      addHazard(
+        x + 15,
+        y - 8,
+        120,
+        30,
+        "redLaser"
+      );
+    }
+
+    if (i % 15 === 9 && currentFloor <= 3) {
+      addHazard(
+        x + platformWidth + 50,
+        floorY - 190,
+        34,
+        100,
+        "verticalLaser"
+      );
+    }
+
+    if (i % 12 === 6 && currentFloor <= 2) {
+      addHazard(
+        x + platformWidth + 35,
+        y - 55,
+        90,
+        35,
+        "blueLaser"
+      );
+    }
+
+    x += platformWidth;
+    i++;
+  }
+
+  const finishX = mapWidth - 320;
+
+  addPlatform(
+    finishX - 80,
+    floorY - 90,
+    150,
+    24,
+    "wide"
+  );
+
+  addPlatform(
+    finishX + 100,
+    floorY - 35,
+    160,
+    24,
+    "long"
+  );
+
+  if (currentFloor <= 2) {
+    addHazard(
+      finishX - 20,
+      floorY - 34,
+      80,
+      30,
+      "spikes"
+    );
+  }
+
+  resetPlayer();
+};
+
+const startGame = () => {
+  currentFloor = 1;
+  lives = 3;
+  elapsed = 0;
+  gameOver = false;
+  won = false;
+  generateLevel();
+  running = true;
+  message.classList.add("hidden");
+};
+
+const showEndMessage = (title, text, buttonText) => {
+  running = false;
+  messageTitle.textContent = title;
+  messageText.innerHTML = text;
+  startButton.textContent = buttonText;
+  message.classList.remove("hidden");
+};
+
+const loseLife = () => {
+  if (player.invulnerable > 0 || !running) {
+    return;
+  }
+
+  lives--;
+  lifeText.textContent = "남은 목숨: " + lives;
+
+  if (lives <= 0) {
+    gameOver = true;
+    showEndMessage(
+      "탈출 실패!",
+      "장애물에 너무 많이 부딪혔어.<br>다시 도전해 보자!",
+      "다시 시작"
+    );
+    return;
+  }
+
+  player.x = Math.max(90, cameraX + 70);
+  player.y = floorY - player.h - 30;
+  player.vx = 0;
+  player.vy = -4;
+  player.invulnerable = 1.5;
+};
+
+const finishFloor = () => {
+  if (currentFloor < 4) {
+    currentFloor++;
+    floorText.textContent = "층: " + currentFloor;
+    generateLevel();
+  } else {
+    won = true;
+    showEndMessage(
+      "탈출 성공!",
+      "드디어 야자에서 탈출했다!<br>축하해!",
+      "다시 플레이"
+    );
+  }
+};
+
+const update = (dt) => {
+  if (!running) {
+    return;
+  }
+
+  elapsed += dt;
+
+  if (player.invulnerable > 0) {
+    player.invulnerable -= dt;
+  }
+
+  let direction = 0;
+
+  if (keys.ArrowLeft || keys.KeyA) {
+    direction -= 1;
+  }
+
+  if (keys.ArrowRight || keys.KeyD) {
+    direction += 1;
+  }
+
+  player.vx = direction * player.speed;
+
+  if (direction !== 0) {
+    player.facing = direction;
+  }
+
+  if (
+    (keys.Space || keys.ArrowUp || keys.KeyW) &&
+    player.grounded
+  ) {
+    player.vy = -player.jump;
+    player.grounded = false;
+  }
+
+  player.vy += 0.52 * dt * 60;
+  if (player.vy > 14) {
+    player.vy = 14;
+  }
+
+  const oldY = player.y;
+
+  player.x += player.vx * dt * 60;
+  player.x = Math.max(0, player.x);
+
+  player.y += player.vy * dt * 60;
+  player.grounded = false;
+
+  for (const moving of movingPlatforms) {
+    moving.x =
+      moving.startX +
+      Math.sin(elapsed * moving.speed + moving.phase) * moving.range;
+
+    const platform = platforms.find((p) =>
+      p.type === "moving" &&
+      Math.abs(p.y - moving.y) < 0.1 &&
+      Math.abs(p.w - moving.w) < 0.1 &&
+      Math.abs(p.x - moving.startX) < moving.range + 2
+    );
+
+    if (platform) {
+      platform.x = moving.x;
+    }
+  }
+
+  for (const platform of platforms) {
+    const overlapsX =
+      player.x + player.w > platform.x &&
+      player.x < platform.x + platform.w;
+
+    const crossedTop =
+      oldY + player.h <= platform.y + 8 &&
+      player.y + player.h >= platform.y &&
+      player.vy >= 0;
+
+    if (overlapsX && crossedTop) {
+      player.y = platform.y - player.h;
+      player.vy = 0;
+      player.grounded = true;
+    }
+  }
+
+  for (const hazard of hazards) {
+    if (hazard.movement) {
+      hazard.y =
+        hazard.baseY +
+        Math.sin(elapsed * hazard.movement.speed + hazard.phase) *
+        hazard.movement.amplitude;
+    }
+
+    const inset = hazard.type === "spikes" ? 8 : 5;
+
+    const hit =
+      player.x + player.w - inset > hazard.x &&
+      player.x + inset < hazard.x + hazard.w &&
+      player.y + player.h - 5 > hazard.y &&
+      player.y + 5 < hazard.y + hazard.h;
+
+    if (hit) {
+      loseLife();
+      break;
+    }
+  }
+
+  if (player.y > H + 300) {
+    loseLife();
+  }
+
+  cameraX = player.x - W * 0.32;
+  cameraX = Math.max(0, Math.min(cameraX, mapWidth - W));
+
+  if (player.x > mapWidth - 170) {
+    finishFloor();
+  }
+
+  floorText.textContent = "층: " + currentFloor;
+  lifeText.textContent = "남은 목숨: " + lives;
+};
+
+const drawBackground = () => {
+  ctx.fillStyle = "#151c2d";
+  ctx.fillRect(0, 0, W, H);
+
+  if (school.complete && school.naturalWidth > 0) {
+    const bgW = school.naturalWidth * MAP_SCALE;
+    const bgH = school.naturalHeight * MAP_SCALE;
+
+    const startX = -cameraX;
+
+    ctx.drawImage(
+      school,
+      startX,
+      mapY,
+      bgW,
+      bgH
+    );
+
+    if (bgW < W + cameraX) {
+      ctx.drawImage(
+        school,
+        startX + bgW,
+        mapY,
+        bgW,
+        bgH
+      );
+    }
+  } else {
+    const gradient = ctx.createLinearGradient(0, 0, 0, H);
+    gradient.addColorStop(0, "#202d49");
+    gradient.addColorStop(1, "#111522");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.fillStyle = "rgba(8, 12, 22, .18)";
+  ctx.fillRect(0, 0, W, H);
+};
+
+const drawPlatform = (platform) => {
+  const x = platform.x - cameraX;
+  const y = platform.y;
+
+  if (x + platform.w < -100 || x > W + 100) {
+    return;
+  }
+
+  let sprite = SPR.medium;
+
+  if (platform.type === "long" || platform.type === "ground") {
+    sprite = SPR.long;
+  } else if (platform.type === "small") {
+    sprite = SPR.small;
+  } else if (platform.type === "wide") {
+    sprite = SPR.wide;
+  } else if (platform.type === "moving") {
+    sprite = SPR.medium;
+  }
+
+  const drawn = drawSprite(
+    sprite,
+    x,
+    y,
+    platform.w,
+    Math.max(24, platform.h)
+  );
+
+  if (!drawn) {
+    ctx.fillStyle = platform.type === "moving" ? "#8ac8e8" : "#4b688d";
+    ctx.fillRect(x, y, platform.w, Math.max(24, platform.h));
+    ctx.fillStyle = "#d1e8f8";
+    ctx.fillRect(x, y, platform.w, 5);
+  }
+
+  if (platform.type === "moving") {
+    ctx.fillStyle = "rgba(180,230,255,.18)";
+    ctx.fillRect(x, y - 5, platform.w, 5);
+  }
+};
+
+const drawHazard = (hazard) => {
+  const x = hazard.x - cameraX;
+  const y = hazard.y;
+
+  if (x + hazard.w < -100 || x > W + 100) {
+    return;
+  }
+
+  let sprite = SPR.spikes;
+
+  if (hazard.type === "saw") {
+    sprite = SPR.saw;
+  } else if (hazard.type === "redLaser") {
+    sprite = SPR.redLaser;
+  } else if (hazard.type === "verticalLaser") {
+    sprite = SPR.verticalLaser;
+  } else if (hazard.type === "blueLaser") {
+    sprite = SPR.blueLaser;
+  }
+
+  const drawn = drawSprite(sprite, x, y, hazard.w, hazard.h);
+
+  if (!drawn) {
+    if (hazard.type === "spikes") {
+      ctx.fillStyle = "#ff4b5e";
+      ctx.beginPath();
+      ctx.moveTo(x, y + hazard.h);
+      ctx.lineTo(x + hazard.w * 0.2, y);
+      ctx.lineTo(x + hazard.w * 0.4, y + hazard.h);
+      ctx.lineTo(x + hazard.w * 0.6, y);
+      ctx.lineTo(x + hazard.w * 0.8, y + hazard.h);
+      ctx.lineTo(x + hazard.w, y);
+      ctx.lineTo(x + hazard.w, y + hazard.h);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillStyle =
+        hazard.type === "blueLaser" ? "#50dfff" : "#ff384f";
+      ctx.fillRect(x, y, hazard.w, hazard.h);
+      ctx.fillStyle = "rgba(255,255,255,.7)";
+      ctx.fillRect(x, y, hazard.w, 3);
+    }
+  }
+
+  if (
+    hazard.type === "redLaser" ||
+    hazard.type === "blueLaser" ||
+    hazard.type === "verticalLaser"
+  ) {
+    ctx.save();
+    ctx.globalAlpha = 0.22 + Math.sin(elapsed * 8) * 0.08;
+    ctx.fillStyle =
+      hazard.type === "blueLaser" ? "#42dfff" : "#ff354b";
+    ctx.fillRect(
+      x - 4,
+      y - 4,
+      hazard.w + 8,
+      hazard.h + 8
+    );
+    ctx.restore();
+  }
+};
+
+const drawPlayer = () => {
+  const x = player.x - cameraX;
+  const y = player.y;
+
+  if (
+    player.invulnerable > 0 &&
+    Math.floor(elapsed * 14) % 2 === 0
+  ) {
+    return;
+  }
+
+  if (characterImage.complete && characterImage.naturalWidth > 0) {
+    ctx.save();
+
+    if (player.facing < 0) {
+      ctx.translate(x + player.w, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(
+        characterImage,
+        0,
+        y,
+        player.w,
+        player.h
+      );
+    } else {
+      ctx.drawImage(
+        characterImage,
+        x,
+        y,
+        player.w,
+        player.h
+      );
+    }
+
+    ctx.restore();
+  } else {
+    ctx.fillStyle = "#ffcf75";
+    ctx.fillRect(x + 5, y, player.w - 10, player.h);
+    ctx.fillStyle = "#24314a";
+    ctx.fillRect(x + 7, y + 8, player.w - 14, 12);
+    ctx.fillStyle = "#f5f5f5";
+    ctx.fillRect(x + 10, y + 12, 5, 5);
+    ctx.fillRect(x + 23, y + 12, 5, 5);
+  }
+};
+
+const drawFinish = () => {
+  const x = mapWidth - 130 - cameraX;
+  const y = floorY - 95;
+
+  if (x < -120 || x > W + 120) {
+    return;
+  }
+
+  ctx.fillStyle = "#ffda72";
+  ctx.fillRect(x, y, 8, 95);
+
+  ctx.fillStyle = "#58d6a4";
+  ctx.beginPath();
+  ctx.moveTo(x + 8, y);
+  ctx.lineTo(x + 68, y + 18);
+  ctx.lineTo(x + 8, y + 36);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 13px Arial";
+  ctx.fillText("EXIT", x + 12, y + 23);
+};
+
+const draw = () => {
+  drawBackground();
+
+  ctx.save();
+
+  for (const platform of platforms) {
+    drawPlatform(platform);
+  }
+
+  for (const hazard of hazards) {
+    drawHazard(hazard);
+  }
+
+  drawFinish();
+  drawPlayer();
+
+  ctx.restore();
+};
+
+const loop = (time) => {
+  const dt = Math.min((time - (lastTime || time)) / 1000, 0.035);
+  lastTime = time;
+
+  update(dt);
+  draw();
+
+  requestAnimationFrame(loop);
+};
+
+window.addEventListener("keydown", (event) => {
+  keys[event.code] = true;
+
+  if (
+    event.code === "Space" ||
+    event.code === "ArrowUp" ||
+    event.code === "ArrowDown" ||
+    event.code === "ArrowLeft" ||
+    event.code === "ArrowRight"
+  ) {
+    event.preventDefault();
+  }
+
+  if (event.code === "KeyR") {
+    startGame();
+  }
 });
+
+window.addEventListener("keyup", (event) => {
+  keys[event.code] = false;
+});
+
+window.addEventListener("blur", () => {
+  for (const key in keys) {
+    keys[key] = false;
+  }
+});
+
+window.addEventListener("resize", resize);
+
+startButton.addEventListener("click", startGame);
 
 resize();
-
-const keys={};
-
-window.addEventListener('keydown',e=>{
- if(['ArrowLeft','ArrowRight','ArrowUp',' '].includes(e.key)||
- ['KeyA','KeyD','KeyW','Space'].includes(e.code)){
-  e.preventDefault();
- }
-
- const jump=['Space','ArrowUp','KeyW'].includes(e.code);
-
- if(jump&&!keys[e.code]&&player.onGround&&!finished){
-  player.vy=-player.jumpPower;
-  player.onGround=false;
- }
-
- keys[e.code]=true;
- keys[e.key]=true;
-});
-
-window.addEventListener('keyup',e=>{
- keys[e.code]=false;
- keys[e.key]=false;
-});
-
-window.addEventListener('blur',()=>{
- Object.keys(keys).forEach(k=>keys[k]=false);
-});
-
-const hit=(a,b)=>
- a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
-
-const loseLife=()=>{
- if(player.invuln>0)return;
- lives--;
-
- if(lives<=0){
-  lives=3;
-  generateLevel();
- }
-
- resetPlayer();
-};
-
-const update=(dt)=>{
- if(!ready||finished)return;
-
- const f=Math.min(dt/16.67,2);
- if(player.invuln>0)player.invuln-=dt;
-
- const oldX=player.x;
-
- if(keys.ArrowRight||keys.KeyD||keys.d||keys.D){
-  player.x+=player.speed*f;
-  player.facing=1;
- }
- if(keys.ArrowLeft||keys.KeyA||keys.a||keys.A){
-  player.x-=player.speed*f;
-  player.facing=-1;
- }
-
- player.x=Math.max(0,Math.min(mapWidth-player.w,player.x));
-
- const previousBottom=player.y+player.h;
- player.vy+=.58*f;
- player.y+=player.vy*f;
- player.onGround=false;
-
- if(player.y+player.h>=floorY){
-  player.y=floorY-player.h;
-  player.vy=0;
-  player.onGround=true;
- }
-
- platforms.forEach(p=>{
-  if(player.vy>=0&&player.x+player.w-7>p.x&&
-     player.x+7<p.x+p.w&&previousBottom<=p.y+14&&
-     player.y+player.h>=p.y){
-   player.y=p.y-player.h;
-   player.vy=0;
-   player.onGround=true;
-  }
- });
-
- const now=performance.now();
-
- movingPlatforms.forEach(p=>{
-  p.y=p.baseY+Math.sin(now/430+p.phase)*25;
-  p.x+=p.direction*.4*f;
-
-  if(p.x<p.baseX-55||p.x>p.baseX+55)p.direction*=-1;
-
-  if(player.vy>=0&&player.x+player.w-7>p.x&&
-     player.x+7<p.x+p.w&&previousBottom<=p.y+14&&
-     player.y+player.h>=p.y){
-   player.y=p.y-player.h;
-   player.vy=0;
-   player.onGround=true;
-  }
- });
-
- if(player.invuln<=0){
-  const body={
-   x:player.x+10,y:player.y+8,
-   w:player.w-20,h:player.h-13
-  };
-
-  hazards.some(h=>{
-   const box={
-    x:h.x+7,y:h.y+6,
-    w:Math.max(8,h.w-14),h:Math.max(8,h.h-10)
-   };
-
-   if(hit(body,box)){
-    loseLife();
-    return true;
-   }
-   return false;
-  });
- }
-
- if(Math.abs(player.x-oldX)>.1&&player.onGround){
-  player.anim+=dt;
-  if(player.anim>105){
-   player.frame=(player.frame+1)%4;
-   player.anim=0;
-  }
- }else if(!player.onGround){
-  player.frame=2;
- }else{
-  player.frame=0;
- }
-
- cameraX=Math.max(0,Math.min(player.x-W*.32,mapWidth-W));
-
- if(player.x>=mapWidth-player.w-2){
-  finished=true;
-  nextButton.style.display='block';
-  nextButton.textContent=currentFloor>1?
-   '다음 층으로 내려가기 ▶':'🎉 탈출 완료! 다시 하기';
- }
-};
-
-const drawSprite=(name,x,y,w,h)=>{
- const s=SPR[name];
-
- if(!s||!assets.complete||!assets.naturalWidth)return false;
-
- ctx.drawImage(
-  assets,s.x,s.y,s.w,s.h,
-  Math.round(x-cameraX),Math.round(y),w,h
- );
- return true;
-};
-
-const drawPlatform=(p)=>{
- if(drawSprite(p.type,p.x,p.y,p.w,p.h))return;
-
- ctx.fillStyle='#3478c7';
- ctx.fillRect(p.x-cameraX,p.y,p.w,p.h);
- ctx.fillStyle='#9acaff';
- ctx.fillRect(p.x-cameraX,p.y,p.w,4);
-};
-
-const drawHazard=(h)=>{
- if(drawSprite(h.type,h.x,h.y,h.w,h.h))return;
-
- ctx.fillStyle='#ff334f';
- ctx.fillRect(h.x-cameraX,h.y,h.w,h.h);
-};
-
-const draw=()=>{
- ctx.clearRect(0,0,W,H);
- ctx.fillStyle='#101525';
- ctx.fillRect(0,0,W,H);
-
- if(!ready){
-  ctx.fillStyle='white';
-  ctx.font='18px sans-serif';
-  ctx.fillText('이미지를 불러오는 중...',20,60);
-  return;
- }
-
- // 원래 큰 맵 스케일 유지. 배경만 화면에 맞춰 세로로 표시
- const bgW=school.naturalWidth*MAP_SCALE;
- const bgH=school.naturalHeight*MAP_SCALE;
-
- for(let x=0;x<mapWidth;x+=bgW){
-  ctx.drawImage(
-   school,
-   x-cameraX,
-   mapY,
-   bgW,
-   bgH
-  );
- }
-
- // 바닥과 HUD가 화면 밖으로 내려가지 않게 고정
- ctx.fillStyle='#101525';
- ctx.fillRect(0,floorY,W,H-floorY);
- ctx.fillStyle='#26324b';
- ctx.fillRect(0,floorY-8,W,10);
-
- platforms.forEach(p=>{
-  if(p.x-cameraX<W+200&&p.x-cameraX+p.w>-200)drawPlatform(p);
- });
-
- movingPlatforms.forEach(p=>{
-  if(p.x-cameraX<W+150&&p.x-cameraX+p.w>-150)drawPlatform(p);
- });
-
- hazards.forEach(h=>{
-  if(h.x-cameraX<W+160&&h.x-cameraX+h.w>-160)drawHazard(h);
- });
-
- const px=player.x-cameraX;
- const fw=character.naturalWidth/4;
- const fh=character.naturalHeight/2;
- const sx=(player.frame%4)*fw;
-
- ctx.save();
-
- if(player.invuln>0&&Math.floor(player.invuln/90)%2===0){
-  ctx.globalAlpha=.45;
- }
-
- if(player.facing<0){
-  ctx.translate(px+player.w,0);
-  ctx.scale(-1,1);
-  ctx.drawImage(character,sx,0,fw,fh,0,player.y,player.w,player.h);
- }else{
-  ctx.drawImage(character,sx,0,fw,fh,px,player.y,player.w,player.h);
- }
-
- ctx.restore();
-
- // 코인과 체크포인트 깃발 표시 없음
- ctx.fillStyle='#000c';
- ctx.fillRect(12,110,210,68);
-
- ctx.fillStyle='white';
- ctx.font='bold 20px sans-serif';
- ctx.fillText(`야자 탈출 - ${currentFloor}층`,22,138);
-
- ctx.font='22px sans-serif';
- ctx.fillStyle='#ff5c72';
- ctx.fillText('❤️'.repeat(lives),22,166);
-
- if(finished){
-  ctx.fillStyle='#000c';
-  ctx.fillRect(0,0,W,H);
-  ctx.fillStyle='white';
-  ctx.textAlign='center';
-  ctx.font='bold 28px sans-serif';
-  ctx.fillText(
-   currentFloor>1?
-   `${currentFloor}층 통과! 다음 층으로 내려가자!`:
-   '🎉 1층 탈출 성공! 야자 탈출 완료!',
-   W/2,H/2
-  );
-  ctx.textAlign='left';
- }
-};
-
-nextButton.addEventListener('click',()=>{
- currentFloor=currentFloor>1?currentFloor-1:4;
- lives=3;
- finished=false;
- nextButton.style.display='none';
- generateLevel();
- resetPlayer();
-});
-
-let loop;
-loop=(t)=>{
- const dt=lastTime?Math.min(t-lastTime,40):16.67;
- lastTime=t;
- update(dt);
- draw();
- requestAnimationFrame(loop);
-};
-
+generateLevel();
 requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+```
