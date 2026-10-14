@@ -21,8 +21,8 @@
       max-width: 960px;
       height: auto;
       margin: auto;
-      background: #303747;
       border: 2px solid #687287;
+      background: #303747;
     }
 
     button {
@@ -34,6 +34,7 @@
       background: #ffca55;
       font-size: 18px;
       font-weight: bold;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -43,7 +44,6 @@
   <p id="info">방향키 또는 A/D: 이동 · 스페이스바: 점프</p>
 
   <canvas id="game" width="960" height="540"></canvas>
-
   <button id="next">다음 층으로 내려가기 ↓</button>
 
   <script>
@@ -55,8 +55,13 @@
     const bg = new Image();
     const sprite = new Image();
 
-    // 설정
-    const ZOOM = 1.4;
+    // 배경 확대 설정
+    const ZOOM = 3;
+
+    // 배경을 아래로 내리는 값
+    // 숫자를 높이면 배경이 더 아래로 내려감
+    const BACKGROUND_DOWN = 180;
+
     const FLOOR_COUNT = 4;
 
     let floor = 1;
@@ -67,12 +72,9 @@
     let bgHeight = 0;
     let bgY = 0;
     let mapWidth = 2880;
-
-    // 바닥 높이: 숫자가 작을수록 바닥이 위로 올라감
-    const groundY = 480;
-
     let cameraX = 0;
 
+    // 캐릭터 설정
     const player = {
       x: 40,
       y: 0,
@@ -85,38 +87,34 @@
     };
 
     const keys = {};
-
     let frame = 0;
     let frameTimer = 0;
     let lastTime = 0;
 
-    // 이미지 준비가 끝나면 게임 설정
+    // 이미지가 준비되면 맵 설정
     function setupMap() {
-      if (
-        !bg.complete || bg.naturalWidth === 0 ||
-        !sprite.complete || sprite.naturalWidth === 0
-      ) {
-        return;
-      }
+      if (!bg.naturalWidth || !sprite.naturalWidth) return;
 
-      // 배경은 원래 비율을 유지해서 확대
-      bgHeight = canvas.height * ZOOM;
-      bgWidth = bg.naturalWidth * (bgHeight / bg.naturalHeight);
+      // 이미지 원래 비율을 유지하며 3배 확대
+      bgHeight = bg.naturalHeight * ZOOM;
+      bgWidth = bg.naturalWidth * ZOOM;
 
-      // 배경 아래쪽을 화면 아래쪽에 맞춤
-      bgY = canvas.height - bgHeight;
+      // 배경 위치를 아래로 이동
+      bgY = BACKGROUND_DOWN;
 
-      // 배경이 실제로 이어지는 범위 안에서 이동
+      // 배경 이미지가 실제로 보이는 구간까지만 이동
       mapWidth = Math.max(canvas.width, bgWidth);
 
-      player.x = 40;
-      player.y = groundY - player.h;
+      // 바닥 위치
+      player.y = 440 - player.h;
       player.vy = 0;
       player.grounded = true;
 
       ready = true;
-      info.textContent = "방향키 또는 A/D: 이동 · 스페이스바: 점프";
     }
+
+    bg.onload = setupMap;
+    sprite.onload = setupMap;
 
     // 키보드 입력
     window.addEventListener("keydown", function(e) {
@@ -133,7 +131,7 @@
       keys[e.key.toLowerCase()] = false;
     });
 
-    // 다음 층
+    // 다음 층 이동
     nextButton.addEventListener("click", function() {
       if (floor >= FLOOR_COUNT) {
         finished = true;
@@ -144,12 +142,14 @@
 
       floor++;
       player.x = 40;
-      player.y = groundY - player.h;
+      player.y = 440 - player.h;
       player.vy = 0;
       player.grounded = true;
+
       cameraX = 0;
       frame = 0;
       frameTimer = 0;
+      finished = false;
 
       nextButton.style.display = "none";
       info.textContent = floor + "층 복도";
@@ -165,7 +165,7 @@
       if (left) player.x -= player.speed;
       if (right) player.x += player.speed;
 
-      // 배경 사진의 범위를 벗어나지 않도록 제한
+      // 맵 끝을 벗어나지 않게 제한
       player.x = Math.max(
         0,
         Math.min(player.x, mapWidth - player.w)
@@ -181,13 +181,16 @@
       player.vy += 0.7;
       player.y += player.vy;
 
+      // 바닥 충돌
+      const groundY = 440;
+
       if (player.y + player.h >= groundY) {
         player.y = groundY - player.h;
         player.vy = 0;
         player.grounded = true;
       }
 
-      // 카메라 따라가기
+      // 카메라가 캐릭터를 따라감
       cameraX = player.x - canvas.width * 0.35;
       cameraX = Math.max(
         0,
@@ -207,10 +210,10 @@
         frameTimer = 0;
       }
 
-      // 끝에 도착하면 다음 층 버튼
+      // 맵 끝에 도착하면 다음 층 버튼 표시
       if (player.x >= mapWidth - player.w - 1) {
         nextButton.style.display = "block";
-        info.textContent = "끝에 도착했어! 다음 층으로 내려가자.";
+        info.textContent = "맵 끝이야! 다음 층으로 내려가자.";
       } else {
         nextButton.style.display = "none";
         info.textContent = floor + "층 · 오른쪽으로 이동하자!";
@@ -227,7 +230,7 @@
         return;
       }
 
-      // 배경
+      // 배경 그리기
       ctx.save();
       ctx.beginPath();
       ctx.rect(0, 0, canvas.width, canvas.height);
@@ -239,7 +242,7 @@
         -cameraX, bgY, bgWidth, bgHeight
       );
 
-      // 사진 끝부분의 빈 공간
+      // 배경 이미지가 끝나면 어두운 색으로 채움
       const endOnScreen = bgWidth - cameraX;
 
       if (endOnScreen < canvas.width) {
@@ -258,12 +261,12 @@
       ctx.fillStyle = "#343b49";
       ctx.fillRect(
         0,
-        groundY,
+        440,
         canvas.width,
-        canvas.height - groundY
+        canvas.height - 440
       );
 
-      // 캐릭터 이미지: 4열 2행
+      // 캐릭터 그리기
       const fw = sprite.naturalWidth / 4;
       const fh = sprite.naturalHeight / 2;
 
@@ -293,25 +296,17 @@
       requestAnimationFrame(loop);
     }
 
-    // 이벤트를 먼저 등록한 뒤 이미지 주소를 지정
-    bg.addEventListener("load", setupMap);
-    sprite.addEventListener("load", setupMap);
+    bg.onerror = function() {
+      info.textContent = "school.png 파일 이름을 확인해 줘.";
+    };
 
-    bg.addEventListener("error", function() {
-      info.textContent = "school.png 파일을 확인해 줘.";
-    });
+    sprite.onerror = function() {
+      info.textContent = "character.png 파일 이름을 확인해 줘.";
+    };
 
-    sprite.addEventListener("error", function() {
-      info.textContent = "character.png 파일을 확인해 줘.";
-    });
-
+    // 이미지 파일 불러오기
     bg.src = "school.png";
     sprite.src = "character.png";
-
-    // 캐시 때문에 load 이벤트가 이미 끝난 경우도 처리
-    if (bg.complete && sprite.complete) {
-      setupMap();
-    }
 
     requestAnimationFrame(loop);
   </script>
