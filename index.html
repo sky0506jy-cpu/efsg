@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -44,7 +43,6 @@ let platforms=[],hazards=[],movingPlatforms=[];
 
 const MAX_LIVES=3;
 
-// 플레이어
 const player={
  x:40,y:0,w:52,h:70,
  speed:5.1,jumpPower:16.5,vy:0,
@@ -52,21 +50,15 @@ const player={
  invuln:0,frame:0,anim:0
 };
 
-// assets.png의 실제 스프라이트 위치
-// 좌표는 사용자가 보내준 1536x1024 이미지 기준
 const SPR={
- platformLong:{x:16,y:108,w:294,h:72},
- platformMedium:{x:331,y:108,w:131,h:72},
- platformSmall:{x:487,y:108,w:64,h:72},
- platformBlock:{x:571,y:94,w:106,h:88},
- platformWide:{x:697,y:109,w:153,h:72},
+ platformLong: {x:16,y:108,w:294,h:72},
 
- floorSpikes:{x:1264,y:276,w:110,h:68},
- ceilingSpikes:{x:797,y:408,w:160,h:74},
- redLaser:{x:958,y:416,w:168,h:66},
- verticalLaser:{x:1137,y:403,w:94,h:145},
- saw:{x:1267,y:431,w:91,h:87},
- blueLaser:{x:1373,y:421,w:135,h:111}
+ floorSpikes:   {x:1264,y:276,w:110,h:68},
+ ceilingSpikes: {x:797,y:408,w:160,h:74},
+ redLaser:      {x:958,y:416,w:168,h:66},
+ verticalLaser: {x:1137,y:403,w:94,h:145},
+ saw:           {x:1267,y:431,w:91,h:87},
+ blueLaser:     {x:1373,y:421,w:135,h:111}
 };
 
 function resize(){
@@ -92,7 +84,7 @@ function setup(reset=true){
  bgScale=Math.max(.5,Math.min(1.15,H/school.naturalHeight));
  mapWidth=Math.max(W*4.2,school.naturalWidth*bgScale*4);
  floorY=Math.round(H*.80);
- mapY=H*-0.68;
+ mapY=H*-1.08;
 
  if(reset){
   generateLevel();
@@ -107,107 +99,94 @@ function generateLevel(){
  hazards=[];
  movingPlatforms=[];
 
- // 층이 내려갈수록 오브젝트가 크게 증가
- const total=40+(4-currentFloor)*14;
- const spacing=(mapWidth-450)/total;
+ // 발판 개수를 줄이고 한 종류의 발판만 사용
+ const total=16+(4-currentFloor)*3;
+ const spacing=(mapWidth-500)/total;
+ const platformWidth=150;
+ const platformHeight=24;
 
- // 발판을 일정한 높이로 반복하지 않고 구간별로 높이를 섞어 배치
- const heightPattern=[72,108,145,84,126,96,158,78,118,138,88,112];
+ // 높이를 규칙적으로 배치해 길이 한눈에 보이도록 구성
+ const heightPattern=[75,110,85,125,90,110,75,100];
 
  for(let i=0;i<total;i++){
-  const x=160+i*spacing;
-  const variant=i%5;
-  let type='platformMedium';
-  let w=116;
-
-  if(variant===0){type='platformLong';w=165}
-  if(variant===1){type='platformMedium';w=115}
-  if(variant===2){type='platformSmall';w=70}
-  if(variant===3){type='platformBlock';w=90}
-  if(variant===4){type='platformWide';w=145}
-
-  // 높이를 다양하게 하되 높은 발판이 연속으로 나오지 않도록 조정
-  let height=heightPattern[(i*5+currentFloor)%heightPattern.length];
-  if(i%12===5||i%12===6)height=Math.min(height,92);
-
+  const x=190+i*spacing;
+  const height=heightPattern[i%heightPattern.length];
   const y=floorY-height;
 
   platforms.push({
-   x,y,w,h:24,type,
-   source:SPR[type]
+   x,y,w:platformWidth,h:platformHeight,
+   type:'platformLong',
+   source:SPR.platformLong
   });
 
-  // 바닥 가시를 일정한 간격마다 배치
-  if(i%5===2||(currentFloor<=2&&i%7===4)){
-   const hx=x+Math.max(25,w*.55);
+  // 장애물도 발판 사이에 여유를 두고 배치
+  if(i%5===2){
    hazards.push({
-    x:hx,y:floorY-34,w:66,h:34,type:'floorSpikes'
+    x:x+platformWidth+35,
+    y:floorY-34,
+    w:48,h:34,
+    type:'floorSpikes'
    });
   }
 
-  // 일부 발판 위에 공중 장애물
-  if(currentFloor<=3&&i%11===6){
+  if(currentFloor<=3&&i%9===5){
    hazards.push({
-    x:x+w+12,y:y-55,w:72,h:34,type:'floorSpikes'
+    x:x+platformWidth+45,
+    y:y-48,
+    w:70,h:30,
+    type:'redLaser'
    });
   }
 
-  // 천장 가시는 더 아래층에서 등장
-  if(currentFloor<=2&&i%13===8){
+  if(currentFloor<=2&&i%12===8){
    hazards.push({
-    x:x+30,y:y-115,w:96,h:45,type:'ceilingSpikes'
+    x:x+platformWidth+20,
+    y:y-105,
+    w:75,h:38,
+    type:'ceilingSpikes'
    });
   }
 
-  // 레이저 장애물
-  if(currentFloor<=3&&i%12===9){
+  if(currentFloor===1&&i%14===10){
    hazards.push({
-    x:x+w+18,y:y-48,w:94,h:34,type:'redLaser'
-   });
-  }
-
-  if(currentFloor===1&&i%15===10){
-   hazards.push({
-    x:x+w+12,y:y-90,w:40,h:86,type:'verticalLaser'
+    x:x+platformWidth+40,
+    y:y-80,
+    w:40,h:76,
+    type:'verticalLaser'
    });
   }
 
   if(currentFloor===1&&i%14===5){
    hazards.push({
-    x:x+w+15,y:y-42,w:48,h:48,type:'saw'
+    x:x+platformWidth+35,
+    y:y-42,
+    w:42,h:42,
+    type:'saw'
    });
   }
 
   if(currentFloor===1&&i%16===11){
    hazards.push({
-    x:x+w+20,y:y-70,w:70,h:52,type:'blueLaser'
+    x:x+platformWidth+40,
+    y:y-65,
+    w:65,h:48,
+    type:'blueLaser'
    });
   }
  }
 
- // 움직이는 발판 추가
- for(let i=0;i<Math.floor(total/6);i++){
-  const x=350+i*spacing*6;
-  const y=floorY-190-(i%2)*35;
-
-  movingPlatforms.push({
-   x,y,baseY:y,w:116,h:24,
-   phase:i*1.7,
-   direction:i%2===0?1:-1,
-   type:i%2===0?'platformLong':'platformMedium'
-  });
- }
-
  // 시작 발판
  platforms.unshift({
-  x:35,y:floorY-45,w:165,h:24,
-  type:'platformLong',source:SPR.platformLong
+  x:35,y:floorY-45,w:150,h:platformHeight,
+  type:'platformLong',
+  source:SPR.platformLong
  });
 
  // 마지막 발판
  platforms.push({
-  x:mapWidth-205,y:floorY-65,w:165,h:24,
-  type:'platformLong',source:SPR.platformLong
+  x:mapWidth-190,y:floorY-65,w:150,h:platformHeight,
+  type:'platformLong',
+  source:SPR.platformLong
  });
 }
 
@@ -226,9 +205,11 @@ function resetPlayer(){
 school.onload=()=>{
  if(character.complete&&character.naturalWidth)setup(true);
 };
+
 character.onload=()=>{
  if(school.complete&&school.naturalWidth)setup(true);
 };
+
 assets.onload=()=>draw();
 
 school.onerror=()=>console.error('school.png를 찾을 수 없습니다.');
@@ -313,7 +294,7 @@ function update(dt){
  player.y+=player.vy*f;
  player.onGround=false;
 
- // 바닥은 화면 안쪽에 고정
+ // 바닥
  if(player.y+player.h>=floorY){
   player.y=floorY-player.h;
   player.vy=0;
@@ -322,28 +303,6 @@ function update(dt){
 
  // 발판 착지
  for(const p of platforms){
-  if(player.vy>=0&&
-     player.x+player.w-7>p.x&&
-     player.x+7<p.x+p.w&&
-     previousBottom<=p.y+14&&
-     player.y+player.h>=p.y){
-   player.y=p.y-player.h;
-   player.vy=0;
-   player.onGround=true;
-  }
- }
-
- // 움직이는 발판
- const now=performance.now();
-
- for(const p of movingPlatforms){
-  p.y=p.baseY+Math.sin(now/430+p.phase)*24;
-  p.x+=p.direction*.35*f;
-
-  if(p.x<100||p.x+p.w>mapWidth-100){
-   p.direction*=-1;
-  }
-
   if(player.vy>=0&&
      player.x+player.w-7>p.x&&
      player.x+7<p.x+p.w&&
@@ -393,7 +352,7 @@ function update(dt){
   player.frame=0;
  }
 
- // 카메라가 캐릭터를 따라감
+ // 카메라 이동
  cameraX=Math.max(0,Math.min(player.x-W*.32,mapWidth-W));
 
  // 끝 지점
@@ -423,7 +382,7 @@ function drawSprite(name,x,y,w,h){
 }
 
 function drawPlatform(p){
- if(drawSprite(p.type,p.x,p.y,p.w,p.h))return;
+ if(drawSprite('platformLong',p.x,p.y,p.w,p.h))return;
 
  ctx.fillStyle='#3478c7';
  ctx.fillRect(p.x-cameraX,p.y,p.w,p.h);
@@ -448,7 +407,7 @@ function draw(){
   return;
  }
 
- // 배경을 반복해서 긴 맵 구성
+ // 배경
  const bgW=school.naturalWidth*bgScale;
  const bgH=Math.min(H*.72,school.naturalHeight*bgScale);
 
@@ -469,16 +428,9 @@ function draw(){
  ctx.fillStyle='#26324b';
  ctx.fillRect(0,floorY-8,W,10);
 
- // 발판
+ // 일반 발판: 한 종류만 사용
  for(const p of platforms){
   if(p.x-cameraX<W+200&&p.x-cameraX+p.w>-200){
-   drawPlatform(p);
-  }
- }
-
- // 움직이는 발판
- for(const p of movingPlatforms){
-  if(p.x-cameraX<W+150&&p.x-cameraX+p.w>-150){
    drawPlatform(p);
   }
  }
@@ -519,7 +471,7 @@ function draw(){
 
  ctx.restore();
 
- // HUD: 코인과 체크포인트 표시 없음
+ // HUD
  ctx.fillStyle='#000b';
  ctx.fillRect(12,110,205,68);
 
@@ -578,4 +530,3 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
-```
