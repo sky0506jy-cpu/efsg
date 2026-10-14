@@ -20,4 +20,331 @@
     width: min(900px, 96vw);
     height: auto;
     margin: 12px auto;
-    border:...
+    border: 3px solid #64748b;
+    border-radius: 8px;
+    background: #b9d9f5;
+  }
+  button {
+    padding: 12px 20px;
+    margin: 5px;
+    border: 0;
+    border-radius: 10px;
+    font-size: 17px;
+    cursor: pointer;
+  }
+  .controls { padding-bottom: 20px; }
+  .hint { color: #cbd5e1; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>🏫 야자 탈출</h1>
+<div id="info">현재 위치: 4층 | 출구까지 내려가자!</div>
+
+<canvas id="game" width="800" height="450"></canvas>
+
+<div class="controls">
+  <button id="left">⬅ 왼쪽</button>
+  <button id="jump">⬆ 점프</button>
+  <button id="right">오른쪽 ➡</button>
+  <button id="restart">다시 시작</button>
+</div>
+<p class="hint">키보드: A/D 또는 ←/→ 이동, Space 또는 ↑ 점프</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const info = document.getElementById("info");
+
+const W = canvas.width;
+const H = canvas.height;
+const gravity = 0.55;
+
+let keys = {};
+let floorIndex = 0;
+let score = 0;
+let gameState = "playing";
+let messageTimer = 0;
+
+const floorNames = ["4층", "3층", "2층", "1층"];
+
+const player = {
+  x: 65, y: 340,
+  w: 30, h: 38,
+  vx: 0, vy: 0,
+  speed: 4,
+  jumpPower: 11,
+  grounded: false,
+  spawnX: 65,
+  spawnY: 340
+};
+
+// 각 층의 발판과 내려가는 통로
+const floors = [
+  {
+    platforms: [
+      [0, 400, 800, 50],
+      [160, 320, 150, 18],
+      [370, 250, 140, 18],
+      [570, 320, 150, 18]
+    ],
+    exit: { x: 730, y: 350, w: 45, h: 50 }
+  },
+  {
+    platforms: [
+      [0, 400, 800, 50],
+      [100, 300, 150, 18],
+      [320, 230, 140, 18],
+      [540, 310, 160, 18]
+    ],
+    exit: { x: 25, y: 350, w: 45, h: 50 }
+  },
+  {
+    platforms: [
+      [0, 400, 800, 50],
+      [140, 310, 150, 18],
+      [370, 240, 140, 18],
+      [590, 310, 140, 18]
+    ],
+    exit: { x: 730, y: 350, w: 45, h: 50 }
+  },
+  {
+    platforms: [
+      [0, 400, 800, 50],
+      [180, 310, 150, 18],
+      [400, 260, 140, 18]
+    ],
+    exit: { x: 730, y: 350, w: 45, h: 50 }
+  }
+];
+
+function resetGame() {
+  floorIndex = 0;
+  score = 0;
+  gameState = "playing";
+  player.x = 65;
+  player.y = 340;
+  player.vx = 0;
+  player.vy = 0;
+  player.spawnX = 65;
+  player.spawnY = 340;
+  updateInfo();
+}
+
+function updateInfo() {
+  info.textContent = gameState === "won"
+    ? `🎉 탈출 성공! 점수: ${score}`
+    : gameState === "lost"
+    ? "게임 오버! 다시 시작을 눌러 봐."
+    : `현재 위치: ${floorNames[floorIndex]} | 점수: ${score} | 목표: 1층 출구`;
+}
+
+function jump() {
+  if (gameState === "playing" && player.grounded) {
+    player.vy = -player.jumpPower;
+    player.grounded = false;
+  }
+}
+
+window.addEventListener("keydown", e => {
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", " "].includes(e.key)) {
+    e.preventDefault();
+  }
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === " " || e.key === "ArrowUp" || e.key.toLowerCase() === "w") {
+    jump();
+  }
+});
+
+window.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+function bindHold(id, key) {
+  const btn = document.getElementById(id);
+  const down = e => {
+    e.preventDefault();
+    keys[key] = true;
+    if (key === " ") jump();
+  };
+  const up = e => {
+    e.preventDefault();
+    keys[key] = false;
+  };
+  btn.addEventListener("pointerdown", down);
+  btn.addEventListener("pointerup", up);
+  btn.addEventListener("pointerleave", up);
+  btn.addEventListener("pointercancel", up);
+}
+
+bindHold("left", "arrowleft");
+bindHold("right", "arrowright");
+document.getElementById("jump").addEventListener("pointerdown", e => {
+  e.preventDefault();
+  jump();
+});
+document.getElementById("restart").addEventListener("click", resetGame);
+
+function nextFloor() {
+  floorIndex++;
+  score += 100;
+
+  if (floorIndex >= 4) {
+    gameState = "won";
+    updateInfo();
+    return;
+  }
+
+  // 새 층의 시작 위치
+  player.x = 65;
+  player.y = 340;
+  player.vx = 0;
+  player.vy = 0;
+  player.spawnX = 65;
+  player.spawnY = 340;
+  player.grounded = false;
+
+  updateInfo();
+}
+
+function update() {
+  if (gameState !== "playing") return;
+
+  player.vx = 0;
+  if (keys["arrowleft"] || keys["a"]) player.vx = -player.speed;
+  if (keys["arrowright"] || keys["d"]) player.vx = player.speed;
+
+  player.x += player.vx;
+  player.x = Math.max(0, Math.min(W - player.w, player.x));
+
+  const oldBottom = player.y + player.h;
+  player.vy += gravity;
+  player.y += player.vy;
+  player.grounded = false;
+
+  for (const p of floors[floorIndex].platforms) {
+    const [px, py, pw, ph] = p;
+    const newBottom = player.y + player.h;
+
+    if (
+      player.vy >= 0 &&
+      oldBottom <= py &&
+      newBottom >= py &&
+      player.x + player.w > px &&
+      player.x < px + pw
+    ) {
+      player.y = py - player.h;
+      player.vy = 0;
+      player.grounded = true;
+    }
+  }
+
+  // 출구에 닿으면 다음 층으로 이동
+  const exit = floors[floorIndex].exit;
+  if (
+    player.x < exit.x + exit.w &&
+    player.x + player.w > exit.x &&
+    player.y < exit.y + exit.h &&
+    player.y + player.h > exit.y
+  ) {
+    nextFloor();
+    return;
+  }
+
+  // 바닥 아래로 떨어지면 게임 오버
+  if (player.y > H + 60) {
+    gameState = "lost";
+    updateInfo();
+  }
+}
+
+function drawBackground() {
+  ctx.fillStyle = "#b9d9f5";
+  ctx.fillRect(0, 0, W, H);
+
+  // 창문
+  ctx.fillStyle = "#26354f";
+  ctx.fillRect(55, 45, 150, 100);
+  ctx.fillRect(595, 45, 150, 100);
+
+  ctx.fillStyle = "#f7df9b";
+  ctx.beginPath();
+  ctx.arc(680, 78, 22, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "#e6eef8";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(130, 45);
+  ctx.lineTo(130, 145);
+  ctx.moveTo(55, 95);
+  ctx.lineTo(205, 95);
+  ctx.moveTo(670, 45);
+  ctx.lineTo(670, 145);
+  ctx.moveTo(595, 95);
+  ctx.lineTo(745, 95);
+  ctx.stroke();
+
+  ctx.fillStyle = "#344258";
+  ctx.fillRect(0, 165, W, 10);
+
+  ctx.fillStyle = "#26354f";
+  ctx.font = "bold 28px sans-serif";
+  ctx.fillText(floorNames[floorIndex] + " 야자 구역", 270, 35);
+}
+
+function draw() {
+  drawBackground();
+
+  // 발판
+  for (const p of floors[floorIndex].platforms) {
+    const [x, y, w, h] = p;
+    ctx.fillStyle = "#805b42";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#62a65a";
+    ctx.fillRect(x, y, w, 6);
+  }
+
+  // 출구
+  const exit = floors[floorIndex].exit;
+  ctx.fillStyle = "#f5c451";
+  ctx.fillRect(exit.x, exit.y, exit.w, exit.h);
+  ctx.fillStyle = "#49391d";
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText(floorIndex === 3 ? "EXIT" : "DOWN", exit.x - 1, exit.y - 8);
+
+  // 임시 캐릭터
+  ctx.fillStyle = "#e7a078";
+  ctx.fillRect(player.x + 7, player.y, 16, 14);
+  ctx.fillStyle = "#3566a8";
+  ctx.fillRect(player.x + 4, player.y + 14, 22, 16);
+  ctx.fillStyle = "#26354f";
+  ctx.fillRect(player.x + 4, player.y + 29, 8, 9);
+  ctx.fillRect(player.x + 18, player.y + 29, 8, 9);
+
+  if (gameState !== "playing") {
+    ctx.fillStyle = "rgba(10,15,30,0.8)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "white";
+    ctx.font = "bold 38px sans-serif";
+    ctx.fillText(
+      gameState === "won" ? "야자 탈출 성공!" : "GAME OVER",
+      W / 2, H / 2
+    );
+    ctx.font = "20px sans-serif";
+    ctx.fillText("다시 시작 버튼을 눌러 줘", W / 2, H / 2 + 42);
+    ctx.textAlign = "left";
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+updateInfo();
+loop();
+</script>
+</body>
+</html>
