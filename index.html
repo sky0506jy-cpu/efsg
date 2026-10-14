@@ -8,12 +8,8 @@
 <style>
 * { box-sizing: border-box; }
 html, body {
-  margin: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: #101525;
-  font-family: sans-serif;
+  margin: 0; width: 100%; height: 100%;
+  overflow: hidden; background: #101525; font-family: sans-serif;
 }
 canvas { display: block; width: 100vw; height: 100vh; }
 #help {
@@ -69,7 +65,7 @@ let mapY = 0;
 let floorY = 0;
 let cameraX = 0;
 
-const MAP_SCALE = 1.5;
+const MAP_SCALE = 3.0;
 const PLAYER_W = 82;
 const PLAYER_H = 108;
 
@@ -82,7 +78,7 @@ const player = {
   animTime: 0,
   moving: false,
   velocityY: 0,
-  jumpPower: 14,
+  jumpPower: 17,
   onGround: false
 };
 
@@ -98,7 +94,9 @@ function fnMapGenerate() {
 
   for (let i = 1; i <= count; i++) {
     const px = spacing * i + 60;
-    const py = floorY - (125 + (i % 2) * 75);
+
+    // 발판 높이를 낮춰 점프로 올라가기 쉽게 조정
+    const py = floorY - (95 + (i % 2) * 55);
 
     platforms.push({
       x: px, y: py, w: 150, h: 38
@@ -152,9 +150,10 @@ function setup() {
 
   mapWidth = Math.max(W + 1, school.naturalWidth * MAP_SCALE);
   mapHeight = school.naturalHeight * MAP_SCALE;
-  mapY = Math.max(0, (H - mapHeight) / 2);
 
-  floorY = mapY + 392 * MAP_SCALE;
+  // 요청한 배경 위치
+  mapY = H * -0.98;
+  floorY = H * 0.84;
 
   fnMapGenerate();
 
@@ -367,7 +366,6 @@ function drawPlatform(p) {
   const x = p.x - cameraX;
 
   if (assets.complete && assets.naturalWidth > 0) {
-    // 스프라이트 시트의 긴 파란 발판 영역
     ctx.drawImage(
       assets, 16, 108, 294, 72,
       x, p.y, p.w, p.h
@@ -384,7 +382,6 @@ function drawHazard(h) {
   const x = h.x - cameraX;
 
   if (assets.complete && assets.naturalWidth > 0) {
-    // 스프라이트 시트의 가시 타일 영역
     ctx.drawImage(
       assets, 1260, 275, 110, 70,
       x, h.y, h.w, h.h
@@ -412,7 +409,6 @@ function draw() {
     return;
   }
 
-  // 배경
   ctx.drawImage(
     school,
     -cameraX,
@@ -424,7 +420,6 @@ function draw() {
   for (const p of platforms) drawPlatform(p);
   for (const h of hazards) drawHazard(h);
 
-  // 캐릭터 스프라이트 4열 x 2행
   const frameW = character.naturalWidth / 4;
   const frameH = character.naturalHeight / 2;
   const sx = (player.frame % 4) * frameW;
@@ -449,7 +444,6 @@ function draw() {
 
   ctx.restore();
 
-  // UI
   ctx.textAlign = "left";
   ctx.fillStyle = "white";
   ctx.font = "bold 22px sans-serif";
