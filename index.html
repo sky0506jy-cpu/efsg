@@ -46,7 +46,7 @@ sprite.src = "character.png";
 
 const player = {
   x: 100, y: 300,
-  w: 64, h: 80,
+  w: 100, h: 115,
   vx: 0, vy: 0,
   speed: 4,
   grounded: false,
@@ -57,13 +57,18 @@ const player = {
 
 const keys = {};
 const gravity = 0.55;
-const groundY = 430;
+const groundY = 450;
+let cameraX = 0;
+const worldWidth = 4000;
 
 window.addEventListener("keydown", e => {
-  keys[e.key.toLowerCase()] = true;
-  if ([" ", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) {
+  const key = e.key.toLowerCase();
+  keys[key] = true;
+
+  if ([" ", "arrowleft", "arrowright"].includes(key)) {
     e.preventDefault();
   }
+
   if ((e.code === "Space" || e.key === "ArrowUp")
       && player.grounded) {
     player.vy = -12;
@@ -77,20 +82,25 @@ window.addEventListener("keyup", e => {
 
 function holdButton(id, key) {
   const button = document.getElementById(id);
+
   button.addEventListener("pointerdown", e => {
     e.preventDefault();
     keys[key] = true;
+
     if (key === "jump" && player.grounded) {
       player.vy = -12;
       player.grounded = false;
     }
   });
-  for (const event of ["pointerup", "pointerleave", "pointercancel"]) {
+
+  for (const event of ["pointerup", "pointerleave",
+                       "pointercancel"]) {
     button.addEventListener(event, () => {
       keys[key] = false;
     });
   }
 }
+
 holdButton("left", "arrowleft");
 holdButton("right", "arrowright");
 holdButton("jump", "jump");
@@ -102,13 +112,16 @@ function update() {
     player.vx = -player.speed;
     player.facing = -1;
   }
+
   if (keys["arrowright"] || keys["d"]) {
     player.vx = player.speed;
     player.facing = 1;
   }
 
   player.x += player.vx;
-  player.x = Math.max(0, Math.min(960 - player.w, player.x));
+  player.x = Math.max(0, Math.min(
+    worldWidth - player.w, player.x
+  ));
 
   player.vy += gravity;
   player.y += player.vy;
@@ -129,59 +142,68 @@ function update() {
   } else {
     player.frame = 0;
   }
+
+  // 캐릭터가 화면 중앙에 오면 배경을 움직임
+  cameraX = player.x - 300;
+  cameraX = Math.max(0, Math.min(
+    worldWidth - canvas.width, cameraX
+  ));
 }
 
 function draw() {
   ctx.clearRect(0, 0, 960, 540);
 
-  // 배경 이미지
+  // 학교 배경을 가로로 이어 붙여 스크롤
   if (bg.complete && bg.naturalWidth > 0) {
-    const scale = 960 / bg.naturalWidth;
-    const height = bg.naturalHeight * scale;
-    ctx.drawImage(bg, 0, 0, 960, height);
+    const scale = 540 / bg.naturalHeight;
+    const bgWidth = bg.naturalWidth * scale;
+    const offset = cameraX % bgWidth;
+
+    for (let x = -offset; x < 960; x += bgWidth) {
+      ctx.drawImage(bg, x, 0, bgWidth, 540);
+    }
   } else {
     ctx.fillStyle = "#182238";
     ctx.fillRect(0, 0, 960, 540);
   }
 
-  // 임시 바닥
+  // 바닥
   ctx.fillStyle = "#343b4d";
-  ctx.fillRect(0, groundY, 960, 110);
+  ctx.fillRect(0, groundY, 960, 90);
 
-  // 스프라이트 시트: 4열 x 2행
+  // 캐릭터
   if (sprite.complete && sprite.naturalWidth > 0) {
     const fw = sprite.naturalWidth / 4;
-    const fh = sprite.naturalHeight / 2;
+    const cellH = sprite.naturalHeight / 2;
+    const fh = cellH * 0.88;
     const col = player.frame % 4;
     const row = Math.floor(player.frame / 4);
+    const screenX = player.x - cameraX;
 
     ctx.save();
 
     if (player.facing === -1) {
-      ctx.translate(player.x + player.w, 0);
+      ctx.translate(screenX + player.w, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(
         sprite,
-        col * fw, row * fh, fw, fh,
+        col * fw, row * cellH, fw, fh,
         0, player.y, player.w, player.h
       );
     } else {
       ctx.drawImage(
         sprite,
-        col * fw, row * fh, fw, fh,
-        player.x, player.y, player.w, player.h
+        col * fw, row * cellH, fw, fh,
+        screenX, player.y, player.w, player.h
       );
     }
 
     ctx.restore();
-  } else {
-    ctx.fillStyle = "#f0c8a0";
-    ctx.fillRect(player.x, player.y, player.w, player.h);
   }
 
   ctx.fillStyle = "white";
   ctx.font = "20px sans-serif";
-  ctx.fillText("4층 - 야자 탈출 준비!", 20, 35);
+  ctx.fillText("4층 - 야자 탈출!", 20, 35);
 }
 
 function loop() {
