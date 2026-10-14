@@ -2,33 +2,39 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>야자 탈출</title>
 
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
+      padding: 12px;
       background: #171b25;
       color: white;
-      font-family: sans-serif;
       text-align: center;
+      font-family: sans-serif;
     }
 
     h1 {
-      margin: 14px;
+      margin: 8px 0 12px;
     }
 
-    canvas {
+    #game {
       display: block;
       width: 100%;
       max-width: 960px;
-      margin: auto;
+      height: auto;
+      margin: 0 auto;
       border: 2px solid #687287;
-      background: #252a35;
+      background: #343b49;
     }
 
     #info {
-      margin: 12px;
+      margin: 10px;
     }
 
     button {
@@ -69,16 +75,17 @@
 
     // 게임 설정
     const FLOOR_COUNT = 4;
-    const BACKGROUND_ZOOM = 1.25;
+    const BACKGROUND_ZOOM = 1.8;
 
     let floor = 1;
     let ready = false;
     let finished = false;
 
-    // 맵 설정
-    let mapWidth = 3000;
+    // 맵과 배경 설정
+    let mapWidth = 2880;
     let bgWidth = 0;
     let bgHeight = 0;
+    let bgY = 0;
     let groundY = 445;
     let cameraX = 0;
 
@@ -97,29 +104,33 @@
     const keys = {};
 
     // 애니메이션 설정
+    const COLUMNS = 4;
+    const ROWS = 2;
     let animationFrame = 0;
     let animationTimer = 0;
     const FRAME_DELAY = 8;
 
-    // 프레임마다 캐릭터가 위아래로 흔들리는 것을 줄이기 위해
-    // 모든 프레임을 같은 크기의 영역에 그림
-    const SPRITE_COLUMNS = 4;
-    const SPRITE_ROWS = 2;
-
+    // 배경과 캐릭터 이미지가 모두 준비되면 시작
     function setupMap() {
       if (!bg.complete || !bg.naturalWidth ||
           !sprite.complete || !sprite.naturalWidth) {
         return;
       }
 
-      // 배경 원본 비율 유지
+      // 배경 원본 비율을 유지하며 확대
       bgHeight = canvas.height * BACKGROUND_ZOOM;
-      bgWidth = bg.naturalWidth * bgHeight / bg.naturalHeight;
+      bgWidth = bg.naturalWidth * (bgHeight / bg.naturalHeight);
 
-      // 맵 길이는 배경 그림의 가로 비율과 별개로 설정
-      mapWidth = Math.max(canvas.width * 3, bgWidth * 3);
+      // 배경 아래쪽을 화면 아래쪽에 맞춤
+      bgY = canvas.height - bgHeight;
 
+      // 맵은 화면보다 길게 설정
+      mapWidth = Math.max(canvas.width * 3, bgWidth);
+
+      // 캐릭터가 서 있을 바닥 위치
+      groundY = 445;
       player.y = groundY - player.h;
+
       ready = true;
     }
 
@@ -129,18 +140,19 @@
     // 키보드 입력
     window.addEventListener("keydown", function(e) {
       const key = e.key.toLowerCase();
-      keys[key] = true;
 
-      if (e.code === "Space" || key.startsWith("arrow")) {
+      if (key.startsWith("arrow") || e.code === "Space") {
         e.preventDefault();
       }
+
+      keys[key] = true;
     });
 
     window.addEventListener("keyup", function(e) {
       keys[e.key.toLowerCase()] = false;
     });
 
-    // 다음 층으로 이동
+    // 다음 층 버튼
     nextButton.addEventListener("click", function() {
       if (floor >= FLOOR_COUNT) {
         finished = true;
@@ -150,10 +162,12 @@
       }
 
       floor++;
+
       player.x = 40;
       player.y = groundY - player.h;
       player.vy = 0;
-      player.grounded = false;
+      player.grounded = true;
+
       cameraX = 0;
       animationFrame = 0;
       animationTimer = 0;
@@ -166,35 +180,49 @@
     function update() {
       if (!ready || finished) return;
 
-      const moving =
-        keys["arrowright"] || keys["d"] ||
+      const movingLeft =
         keys["arrowleft"] || keys["a"];
 
-      if (keys["arrowright"] || keys["d"]) {
+      const movingRight =
+        keys["arrowright"] || keys["d"];
+
+      const moving = movingLeft || movingRight;
+
+      // 좌우 이동
+      if (movingRight) {
         player.x += player.speed;
       }
 
-      if (keys["arrowleft"] || keys["a"]) {
+      if (movingLeft) {
         player.x -= player.speed;
       }
 
-      // 맵 밖으로 나가지 못하게 함
-      player.x = Math.max(0, Math.min(
-        player.x,
-        mapWidth - player.w
-      ));
+      // 배경 이미지가 한 장이므로,
+      // 현재 배경이 끝나는 지점을 맵의 끝으로 사용
+      const mapEnd = Math.max(
+        canvas.width,
+        bgWidth
+      );
+
+      player.x = Math.max(
+        0,
+        Math.min(player.x, mapEnd - player.w)
+      );
 
       // 점프
-      if ((keys[" "] || keys["space"]) && player.grounded) {
+      if (
+        (keys[" "] || keys["space"]) &&
+        player.grounded
+      ) {
         player.vy = player.jumpPower;
         player.grounded = false;
       }
 
-      // 중력
+      // 중력 적용
       player.vy += 0.7;
       player.y += player.vy;
 
-      // 바닥 충돌
+      // 바닥 충돌 처리
       if (player.y + player.h >= groundY) {
         player.y = groundY - player.h;
         player.vy = 0;
@@ -203,33 +231,36 @@
 
       // 카메라가 캐릭터를 따라감
       cameraX = player.x - canvas.width * 0.35;
-      cameraX = Math.max(0, Math.min(
-        cameraX,
-        mapWidth - canvas.width
-      ));
+
+      cameraX = Math.max(
+        0,
+        Math.min(cameraX, mapEnd - canvas.width)
+      );
 
       // 걷는 중에만 애니메이션 변경
       if (moving && player.grounded) {
         animationTimer++;
 
         if (animationTimer >= FRAME_DELAY) {
-          animationFrame = (animationFrame + 1) %
-            (SPRITE_COLUMNS * SPRITE_ROWS);
+          animationFrame =
+            (animationFrame + 1) % (COLUMNS * ROWS);
+
           animationTimer = 0;
         }
       } else {
-        // 멈추면 첫 프레임으로 돌아감
         animationFrame = 0;
         animationTimer = 0;
       }
 
-      // 맵 끝에서 다음 층 버튼 표시
-      if (player.x >= mapWidth - player.w - 2) {
+      // 맵 끝에 도착하면 다음 층 버튼 표시
+      if (player.x >= mapEnd - player.w - 2) {
         nextButton.style.display = "block";
-        info.textContent = "맵 끝에 도착했어! 다음 층으로 내려가자.";
+        info.textContent =
+          "맵 끝에 도착했어! 다음 층으로 내려가자.";
       } else {
         nextButton.style.display = "none";
-        info.textContent = floor + "층 · 오른쪽 끝까지 달려가자!";
+        info.textContent =
+          floor + "층 · 오른쪽 끝까지 달려가자!";
       }
     }
 
@@ -239,29 +270,42 @@
       if (!ready) {
         ctx.fillStyle = "white";
         ctx.font = "22px sans-serif";
-        ctx.fillText("이미지 불러오는 중...", 350, 270);
+        ctx.fillText(
+          "이미지 불러오는 중...",
+          350,
+          270
+        );
         return;
       }
 
-      // 배경 그리기: 원본 비율을 유지하며 확대
+      // 배경 그리기
       ctx.save();
+
+      // 배경 영역을 캔버스 안으로 제한
       ctx.beginPath();
       ctx.rect(0, 0, canvas.width, groundY);
       ctx.clip();
 
-      const bgY = groundY - bgHeight;
-
+      // 배경 이미지의 비율을 유지하며 그리기
       ctx.drawImage(
         bg,
-        0, 0, bg.naturalWidth, bg.naturalHeight,
-        -cameraX, bgY, bgWidth, bgHeight
+        0,
+        0,
+        bg.naturalWidth,
+        bg.naturalHeight,
+        -cameraX,
+        bgY,
+        bgWidth,
+        bgHeight
       );
 
-      // 배경 이미지가 끝난 뒤에는 단색으로 표시
-      if (bgWidth - cameraX < canvas.width) {
+      // 배경 사진이 끝나면 빈 공간은 어두운 색으로 채움
+      const visibleBackgroundEnd = bgWidth - cameraX;
+
+      if (visibleBackgroundEnd < canvas.width) {
         ctx.fillStyle = "#343b49";
         ctx.fillRect(
-          Math.max(0, bgWidth - cameraX),
+          Math.max(0, visibleBackgroundEnd),
           0,
           canvas.width,
           groundY
@@ -270,7 +314,7 @@
 
       ctx.restore();
 
-      // 바닥
+      // 바닥 그리기
       ctx.fillStyle = "#343b49";
       ctx.fillRect(
         0,
@@ -280,13 +324,13 @@
       );
 
       // 캐릭터 스프라이트
-      const frameW = sprite.naturalWidth / SPRITE_COLUMNS;
-      const frameH = sprite.naturalHeight / SPRITE_ROWS;
+      const frameW = sprite.naturalWidth / COLUMNS;
+      const frameH = sprite.naturalHeight / ROWS;
 
-      const col = animationFrame % SPRITE_COLUMNS;
-      const row = Math.floor(animationFrame / SPRITE_COLUMNS);
+      const col = animationFrame % COLUMNS;
+      const row = Math.floor(animationFrame / COLUMNS);
 
-      // 모든 프레임을 동일한 위치와 크기로 그림
+      // 프레임마다 동일한 크기와 위치로 그림
       ctx.drawImage(
         sprite,
         col * frameW,
@@ -299,10 +343,11 @@
         player.h
       );
 
-      // 진행 표시
-      const progress = player.x / (mapWidth - player.w);
+      // 진행률 표시
+      const progress = player.x /
+        Math.max(1, mapEnd - player.w);
 
-      ctx.fillStyle = "rgba(0,0,0,0.65)";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
       ctx.fillRect(20, 20, 220, 16);
 
       ctx.fillStyle = "#ffca55";
@@ -317,10 +362,11 @@
       );
     }
 
-    function loop() {
+    // 게임 시작
+    function gameLoop() {
       update();
       draw();
-      requestAnimationFrame(loop);
+      requestAnimationFrame(gameLoop);
     }
 
     bg.onerror = function() {
@@ -333,15 +379,7 @@
         "character.png 파일을 찾을 수 없어. 파일 이름을 확인해 줘.";
     };
 
-    gameLoopStart();
-
-    function gameLoopStart() {
-      requestAnimationFrame(function run() {
-        update();
-        draw();
-        requestAnimationFrame(run);
-      });
-    }
+    gameLoop();
   </script>
 </body>
 </html>
