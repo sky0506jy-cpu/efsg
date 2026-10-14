@@ -2,54 +2,52 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>야자 탈출</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
-    body {
+    html, body {
       margin: 0;
-      background: #222;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
+      background: #101525;
       font-family: sans-serif;
     }
 
-    #game {
+    canvas {
       display: block;
       width: 100vw;
       height: 100vh;
-      background: #b8d9ef;
-    }
-
-    #nextFloor {
-      display: none;
-      position: fixed;
-      right: 20px;
-      top: 20px;
-      z-index: 10;
-      padding: 14px 22px;
-      border: 0;
-      border-radius: 12px;
-      background: #ffcf45;
-      color: #222;
-      font-size: 18px;
-      font-weight: bold;
-      cursor: pointer;
     }
 
     #help {
       position: fixed;
       left: 12px;
       top: 12px;
-      z-index: 5;
-      padding: 8px 12px;
-      border-radius: 8px;
-      background: #0009;
+      z-index: 2;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: #000b;
       color: white;
       font-size: 14px;
-      pointer-events: none;
+    }
+
+    #nextFloor {
+      display: none;
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      z-index: 3;
+      padding: 13px 20px;
+      border: 0;
+      border-radius: 10px;
+      background: #ffd34e;
+      color: #222;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -63,114 +61,103 @@
     const ctx = canvas.getContext("2d");
     const nextButton = document.getElementById("nextFloor");
 
-    const bg = new Image();
-    const sprite = new Image();
+    const school = new Image();
+    const character = new Image();
 
-    bg.src = "school.png";
-    sprite.src = "character.png";
+    school.src = "./school.png";
+    character.src = "./character.png";
+
+    const keys = {};
+
+    let W = window.innerWidth;
+    let H = window.innerHeight;
+    let dpr = window.devicePixelRatio || 1;
 
     // 맵 확대 배율
     const ZOOM = 3;
 
-    // 맵을 아래로 내리는 정도. 값이 클수록 아래로 내려감.
-    const BACKGROUND_DOWN = 30;
+    // 복도 이미지의 세로 위치 조절
+    const HALLWAY_Y_RATIO = 0.48;
 
-    let screenW = window.innerWidth;
-    let screenH = window.innerHeight;
-
-    let bgWidth = 0;
-    let bgHeight = 0;
     let mapWidth = 0;
     let cameraX = 0;
-
-    const keys = {};
+    let hallwayY = 0;
+    let hallwayHeight = 0;
+    let hallwayWidth = 0;
+    let floorY = 0;
+    let ready = false;
+    let finished = false;
+    let lastTime = 0;
 
     const player = {
-      x: 60,
+      x: 30,
       y: 0,
-      w: 72,
-      h: 100,
+      w: 66,
+      h: 82,
       speed: 5,
       frame: 0,
-      animTimer: 0,
+      animTime: 0,
       moving: false
     };
 
-    const groundY = 0;
-    let floorY = 0;
-    let reachedEnd = false;
-    let imagesReady = false;
-    let lastTime = 0;
+    function resize() {
+      W = window.innerWidth;
+      H = window.innerHeight;
+      dpr = window.devicePixelRatio || 1;
 
-    function resizeCanvas() {
-      const dpr = window.devicePixelRatio || 1;
-
-      screenW = window.innerWidth;
-      screenH = window.innerHeight;
-
-      canvas.width = Math.round(screenW * dpr);
-      canvas.height = Math.round(screenH * dpr);
-      canvas.style.width = screenW + "px";
-      canvas.style.height = screenH + "px";
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      setupMap();
+      setup();
     }
 
-    function setupMap() {
-      if (!bg.complete || !bg.naturalWidth ||
-          !sprite.complete || !sprite.naturalWidth) {
+    function setup() {
+      if (!school.complete || !school.naturalWidth ||
+          !character.complete || !character.naturalWidth) {
         return;
       }
 
-      // 원본 이미지 비율을 유지하며 3배 확대
-      bgWidth = bg.naturalWidth * ZOOM;
-      bgHeight = bg.naturalHeight * ZOOM;
+      // 원본 비율을 유지해 맵을 확대
+      hallwayWidth = school.naturalWidth * ZOOM;
+      hallwayHeight = school.naturalHeight * ZOOM;
 
-      mapWidth = Math.max(screenW, bgWidth);
+      mapWidth = Math.max(hallwayWidth, W);
 
-      // 맵의 아래쪽이 화면 밖으로 사라지지 않도록 위치 제한
-      const desiredY = BACKGROUND_DOWN;
-      const minY = screenH - bgHeight;
-      const maxY = screenH * 0.35;
+      // 화면에서 복도가 보이도록 이미지 전체를 중앙에 배치
+      hallwayY = H * HALLWAY_Y_RATIO - hallwayHeight / 2;
 
-      window.bgY = Math.max(minY, Math.min(desiredY, maxY));
-
-      // 캐릭터가 서 있을 바닥
-      floorY = Math.round(screenH * 0.82);
+      // 캐릭터가 서 있는 바닥
+      floorY = H * 0.84;
       player.y = floorY - player.h;
 
-      player.x = Math.min(player.x, mapWidth - player.w);
-      cameraX = Math.max(
-        0,
-        Math.min(player.x - screenW * 0.3, mapWidth - screenW)
-      );
-
-      imagesReady = true;
+      player.x = Math.max(0, Math.min(player.x, mapWidth - player.w));
+      cameraX = 0;
+      ready = true;
     }
 
-    bg.onload = setupMap;
-    sprite.onload = setupMap;
+    school.onload = setup;
+    character.onload = setup;
 
-    bg.onerror = () => {
-      console.error("school.png를 불러오지 못했습니다.");
+    school.onerror = () => {
+      document.getElementById("help").textContent =
+        "school.png를 불러오지 못했어요.";
     };
 
-    sprite.onerror = () => {
-      console.error("character.png를 불러오지 못했습니다.");
+    character.onerror = () => {
+      document.getElementById("help").textContent =
+        "character.png를 불러오지 못했어요.";
     };
 
-    window.addEventListener("resize", resizeCanvas);
-    resizeCanvas();
+    window.addEventListener("resize", resize);
+    resize();
 
     window.addEventListener("keydown", (e) => {
-      if ([
-        "ArrowLeft", "ArrowRight", "a", "A", "d", "D"
-      ].includes(e.key)) {
+      if (["ArrowLeft", "ArrowRight", "a", "A", "d", "D"].includes(e.key)) {
         e.preventDefault();
       }
-
       keys[e.key] = true;
     });
 
@@ -178,92 +165,87 @@
       keys[e.key] = false;
     });
 
+    window.addEventListener("blur", () => {
+      for (const key in keys) keys[key] = false;
+    });
+
     nextButton.addEventListener("click", () => {
       player.x = 0;
       cameraX = 0;
-      reachedEnd = false;
+      finished = false;
       nextButton.style.display = "none";
-      setupMap();
     });
 
-    function update(delta) {
-      if (!imagesReady || reachedEnd) return;
+    function update(dt) {
+      if (!ready || finished) return;
 
       const oldX = player.x;
-      const step = player.speed * Math.min(delta / 16.67, 2);
+      const step = player.speed * Math.min(dt / 16.67, 2);
 
-      if (keys["ArrowRight"] || keys["d"] || keys["D"]) {
-        player.x += step;
-      }
-
-      if (keys["ArrowLeft"] || keys["a"] || keys["A"]) {
-        player.x -= step;
-      }
+      if (keys.ArrowRight || keys.d || keys.D) player.x += step;
+      if (keys.ArrowLeft || keys.a || keys.A) player.x -= step;
 
       player.x = Math.max(0, Math.min(player.x, mapWidth - player.w));
-      player.moving = Math.abs(player.x - oldX) > 0;
+      player.moving = player.x !== oldX;
 
       if (player.moving) {
-        player.animTimer += delta;
-
-        if (player.animTimer > 100) {
+        player.animTime += dt;
+        if (player.animTime >= 120) {
           player.frame = (player.frame + 1) % 4;
-          player.animTimer = 0;
+          player.animTime = 0;
         }
       } else {
         player.frame = 0;
-        player.animTimer = 0;
+        player.animTime = 0;
       }
 
-      cameraX = player.x - screenW * 0.3;
-      cameraX = Math.max(0, Math.min(cameraX, mapWidth - screenW));
+      // 캐릭터를 따라가는 카메라
+      cameraX = player.x - W * 0.3;
+      cameraX = Math.max(0, Math.min(cameraX, mapWidth - W));
 
-      if (player.x >= mapWidth - player.w - 2) {
-        reachedEnd = true;
+      if (player.x >= mapWidth - player.w - 1) {
+        finished = true;
         nextButton.style.display = "block";
       }
     }
 
     function draw() {
-      ctx.clearRect(0, 0, screenW, screenH);
+      ctx.clearRect(0, 0, W, H);
 
-      // 하늘색 배경은 이미지가 화면을 채우지 못할 때 보임
-      ctx.fillStyle = "#b8d9ef";
-      ctx.fillRect(0, 0, screenW, screenH);
+      // 하늘색 대신 복도 이미지와 어울리는 어두운 배경
+      ctx.fillStyle = "#101525";
+      ctx.fillRect(0, 0, W, H);
 
-      if (!imagesReady) {
-        ctx.fillStyle = "#222";
-        ctx.font = "20px sans-serif";
+      if (!ready) {
+        ctx.fillStyle = "white";
+        ctx.font = "18px sans-serif";
         ctx.fillText("이미지를 불러오는 중...", 20, 60);
         return;
       }
 
-      // 맵을 카메라 위치에 맞춰 그림
+      // 배경 이미지는 한 번만 그려 반복하지 않음
       ctx.drawImage(
-        bg,
+        school,
         -cameraX,
-        window.bgY,
-        bgWidth,
-        bgHeight
+        hallwayY,
+        hallwayWidth,
+        hallwayHeight
       );
 
-      // 바닥
-      ctx.fillStyle = "#494949";
-      ctx.fillRect(0, floorY, screenW, screenH - floorY);
+      // 캐릭터가 걷는 바닥
+      ctx.fillStyle = "#343434";
+      ctx.fillRect(0, floorY, W, H - floorY);
 
-      // 캐릭터 스프라이트 시트: 4열 x 2행
-      const cols = 4;
-      const rows = 2;
-      const frameW = sprite.naturalWidth / cols;
-      const frameH = sprite.naturalHeight / rows;
+      // 스프라이트 시트 4열 x 2행
+      const frameW = character.naturalWidth / 4;
+      const frameH = character.naturalHeight / 2;
 
-      const frameX = player.frame % cols;
-      const frameY = 0;
+      ctx.imageSmoothingEnabled = false;
 
       ctx.drawImage(
-        sprite,
-        frameX * frameW,
-        frameY * frameH,
+        character,
+        player.frame * frameW,
+        0,
         frameW,
         frameH,
         player.x - cameraX,
@@ -272,24 +254,23 @@
         player.h
       );
 
-      if (reachedEnd) {
+      if (finished) {
         ctx.fillStyle = "#0009";
-        ctx.fillRect(0, 0, screenW, screenH);
+        ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = "white";
         ctx.font = "bold 30px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("복도 끝에 도착했다!", screenW / 2, screenH / 2);
+        ctx.fillText("복도 끝에 도착했다!", W / 2, H / 2);
         ctx.textAlign = "left";
       }
     }
 
     function loop(time) {
-      const delta = lastTime ? time - lastTime : 16.67;
+      const dt = lastTime ? time - lastTime : 16.67;
       lastTime = time;
 
-      update(delta);
+      update(dt);
       draw();
-
       requestAnimationFrame(loop);
     }
 
