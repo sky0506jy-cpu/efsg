@@ -6,35 +6,23 @@
   <title>야자 탈출</title>
 
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
     body {
       margin: 0;
-      padding: 12px;
+      padding: 10px;
       background: #171b25;
       color: white;
-      text-align: center;
       font-family: sans-serif;
+      text-align: center;
     }
 
-    h1 {
-      margin: 8px 0 12px;
-    }
-
-    #game {
+    canvas {
       display: block;
       width: 100%;
       max-width: 960px;
       height: auto;
-      margin: 0 auto;
+      margin: auto;
+      background: #303747;
       border: 2px solid #687287;
-      background: #343b49;
-    }
-
-    #info {
-      margin: 10px;
     }
 
     button {
@@ -44,17 +32,14 @@
       border: none;
       border-radius: 10px;
       background: #ffca55;
-      color: #222;
       font-size: 18px;
       font-weight: bold;
-      cursor: pointer;
     }
   </style>
 </head>
 
 <body>
   <h1>🏫 야자 탈출</h1>
-
   <p id="info">방향키 또는 A/D: 이동 · 스페이스바: 점프</p>
 
   <canvas id="game" width="960" height="540"></canvas>
@@ -70,26 +55,24 @@
     const bg = new Image();
     const sprite = new Image();
 
-    bg.src = "school.png";
-    sprite.src = "character.png";
-
-    // 게임 설정
+    // 설정
+    const ZOOM = 1.4;
     const FLOOR_COUNT = 4;
-    const BACKGROUND_ZOOM = 1.8;
 
     let floor = 1;
     let ready = false;
     let finished = false;
 
-    // 맵과 배경 설정
-    let mapWidth = 2880;
     let bgWidth = 0;
     let bgHeight = 0;
     let bgY = 0;
-    let groundY = 445;
+    let mapWidth = 2880;
+
+    // 바닥 높이: 숫자가 작을수록 바닥이 위로 올라감
+    const groundY = 480;
+
     let cameraX = 0;
 
-    // 캐릭터 설정
     const player = {
       x: 40,
       y: 0,
@@ -103,45 +86,43 @@
 
     const keys = {};
 
-    // 애니메이션 설정
-    const COLUMNS = 4;
-    const ROWS = 2;
-    let animationFrame = 0;
-    let animationTimer = 0;
-    const FRAME_DELAY = 8;
+    let frame = 0;
+    let frameTimer = 0;
+    let lastTime = 0;
 
-    // 배경과 캐릭터 이미지가 모두 준비되면 시작
+    // 이미지 준비가 끝나면 게임 설정
     function setupMap() {
-      if (!bg.complete || !bg.naturalWidth ||
-          !sprite.complete || !sprite.naturalWidth) {
+      if (
+        !bg.complete || bg.naturalWidth === 0 ||
+        !sprite.complete || sprite.naturalWidth === 0
+      ) {
         return;
       }
 
-      // 배경 원본 비율을 유지하며 확대
-      bgHeight = canvas.height * BACKGROUND_ZOOM;
+      // 배경은 원래 비율을 유지해서 확대
+      bgHeight = canvas.height * ZOOM;
       bgWidth = bg.naturalWidth * (bgHeight / bg.naturalHeight);
 
       // 배경 아래쪽을 화면 아래쪽에 맞춤
       bgY = canvas.height - bgHeight;
 
-      // 맵은 화면보다 길게 설정
-      mapWidth = Math.max(canvas.width * 3, bgWidth);
+      // 배경이 실제로 이어지는 범위 안에서 이동
+      mapWidth = Math.max(canvas.width, bgWidth);
 
-      // 캐릭터가 서 있을 바닥 위치
-      groundY = 445;
+      player.x = 40;
       player.y = groundY - player.h;
+      player.vy = 0;
+      player.grounded = true;
 
       ready = true;
+      info.textContent = "방향키 또는 A/D: 이동 · 스페이스바: 점프";
     }
-
-    bg.onload = setupMap;
-    sprite.onload = setupMap;
 
     // 키보드 입력
     window.addEventListener("keydown", function(e) {
       const key = e.key.toLowerCase();
 
-      if (key.startsWith("arrow") || e.code === "Space") {
+      if (e.code === "Space" || key.startsWith("arrow")) {
         e.preventDefault();
       }
 
@@ -152,7 +133,7 @@
       keys[e.key.toLowerCase()] = false;
     });
 
-    // 다음 층 버튼
+    // 다음 층
     nextButton.addEventListener("click", function() {
       if (floor >= FLOOR_COUNT) {
         finished = true;
@@ -162,17 +143,14 @@
       }
 
       floor++;
-
       player.x = 40;
       player.y = groundY - player.h;
       player.vy = 0;
       player.grounded = true;
-
       cameraX = 0;
-      animationFrame = 0;
-      animationTimer = 0;
+      frame = 0;
+      frameTimer = 0;
 
-      finished = false;
       nextButton.style.display = "none";
       info.textContent = floor + "층 복도";
     });
@@ -180,87 +158,62 @@
     function update() {
       if (!ready || finished) return;
 
-      const movingLeft =
-        keys["arrowleft"] || keys["a"];
+      const left = keys["arrowleft"] || keys["a"];
+      const right = keys["arrowright"] || keys["d"];
+      const moving = left || right;
 
-      const movingRight =
-        keys["arrowright"] || keys["d"];
+      if (left) player.x -= player.speed;
+      if (right) player.x += player.speed;
 
-      const moving = movingLeft || movingRight;
-
-      // 좌우 이동
-      if (movingRight) {
-        player.x += player.speed;
-      }
-
-      if (movingLeft) {
-        player.x -= player.speed;
-      }
-
-      // 배경 이미지가 한 장이므로,
-      // 현재 배경이 끝나는 지점을 맵의 끝으로 사용
-      const mapEnd = Math.max(
-        canvas.width,
-        bgWidth
-      );
-
+      // 배경 사진의 범위를 벗어나지 않도록 제한
       player.x = Math.max(
         0,
-        Math.min(player.x, mapEnd - player.w)
+        Math.min(player.x, mapWidth - player.w)
       );
 
       // 점프
-      if (
-        (keys[" "] || keys["space"]) &&
-        player.grounded
-      ) {
+      if ((keys[" "] || keys["space"]) && player.grounded) {
         player.vy = player.jumpPower;
         player.grounded = false;
       }
 
-      // 중력 적용
+      // 중력
       player.vy += 0.7;
       player.y += player.vy;
 
-      // 바닥 충돌 처리
       if (player.y + player.h >= groundY) {
         player.y = groundY - player.h;
         player.vy = 0;
         player.grounded = true;
       }
 
-      // 카메라가 캐릭터를 따라감
+      // 카메라 따라가기
       cameraX = player.x - canvas.width * 0.35;
-
       cameraX = Math.max(
         0,
-        Math.min(cameraX, mapEnd - canvas.width)
+        Math.min(cameraX, mapWidth - canvas.width)
       );
 
-      // 걷는 중에만 애니메이션 변경
+      // 걷기 애니메이션
       if (moving && player.grounded) {
-        animationTimer++;
+        frameTimer++;
 
-        if (animationTimer >= FRAME_DELAY) {
-          animationFrame =
-            (animationFrame + 1) % (COLUMNS * ROWS);
-
-          animationTimer = 0;
+        if (frameTimer >= 8) {
+          frame = (frame + 1) % 8;
+          frameTimer = 0;
         }
       } else {
-        animationFrame = 0;
-        animationTimer = 0;
+        frame = 0;
+        frameTimer = 0;
       }
 
-      // 맵 끝에 도착하면 다음 층 버튼 표시
-      if (player.x >= mapEnd - player.w - 2) {
+      // 끝에 도착하면 다음 층 버튼
+      if (player.x >= mapWidth - player.w - 1) {
         nextButton.style.display = "block";
-        info.textContent =
-          "맵 끝에 도착했어! 다음 층으로 내려가자.";
+        info.textContent = "끝에 도착했어! 다음 층으로 내려가자.";
       } else {
         nextButton.style.display = "none";
-        info.textContent =
-          floor + "층 · 오른쪽 끝까지 달려가자!";
+        info.textContent = floor + "층 · 오른쪽으로 이동하자!";
       }
     }
 
@@ -270,51 +223,38 @@
       if (!ready) {
         ctx.fillStyle = "white";
         ctx.font = "22px sans-serif";
-        ctx.fillText(
-          "이미지 불러오는 중...",
-          350,
-          270
-        );
+        ctx.fillText("이미지 불러오는 중...", 350, 270);
         return;
       }
 
-      // 배경 그리기
+      // 배경
       ctx.save();
-
-      // 배경 영역을 캔버스 안으로 제한
       ctx.beginPath();
-      ctx.rect(0, 0, canvas.width, groundY);
+      ctx.rect(0, 0, canvas.width, canvas.height);
       ctx.clip();
 
-      // 배경 이미지의 비율을 유지하며 그리기
       ctx.drawImage(
         bg,
-        0,
-        0,
-        bg.naturalWidth,
-        bg.naturalHeight,
-        -cameraX,
-        bgY,
-        bgWidth,
-        bgHeight
+        0, 0, bg.naturalWidth, bg.naturalHeight,
+        -cameraX, bgY, bgWidth, bgHeight
       );
 
-      // 배경 사진이 끝나면 빈 공간은 어두운 색으로 채움
-      const visibleBackgroundEnd = bgWidth - cameraX;
+      // 사진 끝부분의 빈 공간
+      const endOnScreen = bgWidth - cameraX;
 
-      if (visibleBackgroundEnd < canvas.width) {
-        ctx.fillStyle = "#343b49";
+      if (endOnScreen < canvas.width) {
+        ctx.fillStyle = "#303747";
         ctx.fillRect(
-          Math.max(0, visibleBackgroundEnd),
+          Math.max(0, endOnScreen),
           0,
           canvas.width,
-          groundY
+          canvas.height
         );
       }
 
       ctx.restore();
 
-      // 바닥 그리기
+      // 바닥
       ctx.fillStyle = "#343b49";
       ctx.fillRect(
         0,
@@ -323,63 +263,57 @@
         canvas.height - groundY
       );
 
-      // 캐릭터 스프라이트
-      const frameW = sprite.naturalWidth / COLUMNS;
-      const frameH = sprite.naturalHeight / ROWS;
+      // 캐릭터 이미지: 4열 2행
+      const fw = sprite.naturalWidth / 4;
+      const fh = sprite.naturalHeight / 2;
 
-      const col = animationFrame % COLUMNS;
-      const row = Math.floor(animationFrame / COLUMNS);
+      const col = frame % 4;
+      const row = Math.floor(frame / 4);
 
-      // 프레임마다 동일한 크기와 위치로 그림
       ctx.drawImage(
         sprite,
-        col * frameW,
-        row * frameH,
-        frameW,
-        frameH,
+        col * fw,
+        row * fh,
+        fw,
+        fh,
         Math.round(player.x - cameraX),
         Math.round(player.y),
         player.w,
         player.h
       );
-
-      // 진행률 표시
-      const progress = player.x /
-        Math.max(1, mapEnd - player.w);
-
-      ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-      ctx.fillRect(20, 20, 220, 16);
-
-      ctx.fillStyle = "#ffca55";
-      ctx.fillRect(20, 20, 220 * progress, 16);
-
-      ctx.fillStyle = "white";
-      ctx.font = "14px sans-serif";
-      ctx.fillText(
-        floor + "층 · " + Math.floor(progress * 100) + "%",
-        20,
-        55
-      );
     }
 
-    // 게임 시작
-    function gameLoop() {
-      update();
-      draw();
-      requestAnimationFrame(gameLoop);
+    function loop(time) {
+      if (time - lastTime >= 16) {
+        update();
+        draw();
+        lastTime = time;
+      }
+
+      requestAnimationFrame(loop);
     }
 
-    bg.onerror = function() {
-      info.textContent =
-        "school.png 파일을 찾을 수 없어. 파일 이름을 확인해 줘.";
-    };
+    // 이벤트를 먼저 등록한 뒤 이미지 주소를 지정
+    bg.addEventListener("load", setupMap);
+    sprite.addEventListener("load", setupMap);
 
-    sprite.onerror = function() {
-      info.textContent =
-        "character.png 파일을 찾을 수 없어. 파일 이름을 확인해 줘.";
-    };
+    bg.addEventListener("error", function() {
+      info.textContent = "school.png 파일을 확인해 줘.";
+    });
 
-    gameLoop();
+    sprite.addEventListener("error", function() {
+      info.textContent = "character.png 파일을 확인해 줘.";
+    });
+
+    bg.src = "school.png";
+    sprite.src = "character.png";
+
+    // 캐시 때문에 load 이벤트가 이미 끝난 경우도 처리
+    if (bg.complete && sprite.complete) {
+      setupMap();
+    }
+
+    requestAnimationFrame(loop);
   </script>
 </body>
 </html>
