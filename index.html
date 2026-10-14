@@ -55,7 +55,7 @@ const nextButton = document.getElementById("nextFloor");
 
 const school = new Image();
 const character = new Image();
-const assets = new Image(); // 장애물과 발판 이미지
+const assets = new Image();
 
 school.src = "./school.png";
 character.src = "./character.png";
@@ -77,7 +77,7 @@ let mapY = 0;
 let floorY = 0;
 let cameraX = 0;
 
-// 원본의 깔끔한 스케일과 비율 유지
+// 원래의 완벽한 맵 비율과 위치
 const MAP_SCALE = 3.0;
 const PLAYER_W = 100;
 const PLAYER_H = 120;
@@ -100,32 +100,28 @@ const player = {
 let platforms = [];
 let hazards = [];
 
-// 층별 난이도에 맞추어 원래 맵 크기 안에서 발판과 장애물 배치
 function fnMapGenerate() {
   platforms = [];
   hazards = [];
 
-  // 층이 낮을수록 장애물과 발판이 많아짐 (난이도 상승)
   let count = 2 + (4 - currentFloor);
   let spacing = mapWidth / (count + 2);
 
   for (let i = 1; i <= count; i++) {
     let px = spacing * i + 100;
     let py = floorY - (130 + (i % 2) * 90);
-    platforms.push({ x: px, y: py, w: Math.max(120, 220 - (4 - currentFloor) * 20), h: 40 });
+    platforms.push({ x: px, y: py, w: 180, h: 40 });
 
-    // 가시 장애물 배치
     if (i <= currentFloor || currentFloor <= 2) {
-      hazards.push({ x: px + 40, y: floorY - 45, w: 50, h: 45 });
+      hazards.push({ x: px + 50, y: floorY - 45, w: 50, h: 45 });
     }
   }
 
-  // 추가 바닥 가시 장애물
   if (currentFloor <= 3) {
-    hazards.push({ x: mapWidth * 0.45, y: floorY - 45, w: 60, h: 45 });
+    hazards.push({ x: mapWidth * 0.45, y: floorY - 45, w: 50, h: 45 });
   }
   if (currentFloor <= 2) {
-    hazards.push({ x: mapWidth * 0.7, y: floorY - 45, w: 60, h: 45 });
+    hazards.push({ x: mapWidth * 0.7, y: floorY - 45, w: 50, h: 45 });
   }
 }
 
@@ -144,7 +140,6 @@ function resize() {
 function setup() {
   if (!school.naturalWidth || !character.naturalWidth) return;
 
-  // 원래 코드가 가지던 완벽한 맵 비율과 위치 복구
   mapWidth = Math.max(W, school.naturalWidth * MAP_SCALE);
   mapHeight = school.naturalHeight * MAP_SCALE;
 
@@ -196,7 +191,7 @@ addEventListener("blur", () => {
 
 nextButton.addEventListener("click", () => {
   if (currentFloor > 1) {
-    currentFloor--; // 4층 -> 3층 -> 2층 -> 1층
+    currentFloor--;
     resetPlayer();
     fnMapGenerate();
     nextButton.style.display = "none";
@@ -242,7 +237,6 @@ function update(dt) {
   player.x = Math.max(0, Math.min(player.x, mapWidth - player.w));
   player.moving = Math.abs(player.x - oldX) > 0;
 
-  // 중력과 점프
   if (!player.onGround) {
     player.velocityY += 0.65 * factor;
     player.y += player.velocityY * factor;
@@ -254,7 +248,7 @@ function update(dt) {
     }
   }
 
-  // 발판 충돌 체크
+  // 발판 충돌
   for (let plat of platforms) {
     if (
       player.x + player.w > plat.x + 10 &&
@@ -269,7 +263,7 @@ function update(dt) {
     }
   }
 
-  // 장애물(가시) 충돌 체크 (닿으면 리셋)
+  // 장애물 충돌
   for (let haz of hazards) {
     if (
       player.x + player.w > haz.x + 10 &&
@@ -298,7 +292,6 @@ function update(dt) {
   cameraX = player.x - W * 0.3;
   cameraX = Math.max(0, Math.min(cameraX, mapWidth - W));
 
-  // 오른쪽 끝에 도달하면 클리어
   if (player.x >= mapWidth - player.w - 1) {
     finished = true;
     nextButton.style.display = "block";
@@ -317,7 +310,7 @@ function draw() {
     return;
   }
 
-  // 1. 원래 비율의 학교 배경 맵
+  // 1. 학교 배경 맵
   ctx.drawImage(
     school,
     -cameraX,
@@ -326,23 +319,22 @@ function draw() {
     mapHeight
   );
 
-  // 2. 발판 (assets.png 이미지에서 파란색 블록 영역 크롭해서 반복 렌더링)
-  // assets.png 내 발판 대략적 위치 좌표 예시 (필요시 시트 구조에 맞게 sx, sy 조정 가능)
-  const srcTileX = 0, srcTileY = 0, srcTileW = 60, srcTileH = 20; 
+  // 2. 발판 그리기 (assets.png 전체 또는 특정 타일 렌더링 - 확실히 보이도록 배경색+이미지 혼합)
   for (let plat of platforms) {
-    if (assets.naturalWidth) {
-      ctx.drawImage(assets, srcTileX, srcTileY, srcTileW, srcTileH, plat.x - cameraX, plat.y, plat.w, plat.h);
+    if (assets.complete && assets.naturalWidth > 0) {
+      // assets.png의 상단 첫 번째 발판 영역 예시 (좌표는 필요시 조정 가능)
+      ctx.drawImage(assets, 0, 0, 150, 40, plat.x - cameraX, plat.y, plat.w, plat.h);
     } else {
-      ctx.fillStyle = "#345c8c";
+      ctx.fillStyle = "#3b5b92";
       ctx.fillRect(plat.x - cameraX, plat.y, plat.w, plat.h);
     }
   }
 
-  // 3. 장애물 (assets.png 이미지에서 가시 영역 크롭)
-  const srcSpikeX = 300, srcSpikeY = 0, srcSpikeW = 40, srcSpikeH = 40;
+  // 3. 장애물 그리기 (가시 영역)
   for (let haz of hazards) {
-    if (assets.naturalWidth) {
-      ctx.drawImage(assets, srcSpikeX, srcSpikeY, srcSpikeW, srcSpikeH, haz.x - cameraX, haz.y, haz.w, haz.h);
+    if (assets.complete && assets.naturalWidth > 0) {
+      // assets.png 내 가시 영역 예시
+      ctx.drawImage(assets, 400, 0, 80, 80, haz.x - cameraX, haz.y, haz.w, haz.h);
     } else {
       ctx.fillStyle = "#d93838";
       ctx.fillRect(haz.x - cameraX, haz.y, haz.w, haz.h);
@@ -353,33 +345,23 @@ function draw() {
   ctx.fillStyle = "#343434";
   ctx.fillRect(0, floorY, W, H - floorY);
 
-  // 5. 캐릭터 그리기
+  // 5. 캐릭터 그리기 (4열 x 2행 구조 대응)
   const frameW = character.naturalWidth / 4;
   const frameH = character.naturalHeight / 2;
   const sx = player.frame * frameW;
   const sy = 0;
 
   ctx.save();
-
   if (player.facing === -1) {
     ctx.translate(player.x - cameraX + player.w, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(
-      character,
-      sx, sy, frameW, frameH,
-      0, player.y, player.w, player.h
-    );
+    ctx.drawImage(character, sx, sy, frameW, frameH, 0, player.y, player.w, player.h);
   } else {
-    ctx.drawImage(
-      character,
-      sx, sy, frameW, frameH,
-      player.x - cameraX, player.y, player.w, player.h
-    );
+    ctx.drawImage(character, sx, sy, frameW, frameH, player.x - cameraX, player.y, player.w, player.h);
   }
-
   ctx.restore();
 
-  // 상단 층수 표시 UI
+  // 상단 UI
   ctx.fillStyle = "white";
   ctx.font = "bold 22px sans-serif";
   ctx.fillText(`🏫 야자 탈출 - ${currentFloor}층 복도`, 20, 60);
