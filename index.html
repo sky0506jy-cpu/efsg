@@ -4,8 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>야자 탈출</title>
+
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     html, body {
       margin: 0;
@@ -24,14 +27,15 @@
 
     #help {
       position: fixed;
-      left: 12px;
       top: 12px;
+      left: 12px;
       z-index: 2;
       padding: 10px 14px;
       border-radius: 10px;
-      background: #000b;
       color: white;
+      background: #000b;
       font-size: 14px;
+      line-height: 1.6;
     }
 
     #nextFloor {
@@ -41,7 +45,7 @@
       right: 15px;
       z-index: 3;
       padding: 13px 20px;
-      border: 0;
+      border: none;
       border-radius: 10px;
       background: #ffd34e;
       color: #222;
@@ -51,8 +55,13 @@
     }
   </style>
 </head>
+
 <body>
-  <div id="help">← → 방향키 또는 A / D 로 이동</div>
+  <div id="help">
+    ← → 또는 A / D : 이동<br>
+    Space 또는 ↑ : 점프
+  </div>
+
   <button id="nextFloor">다음 층으로 ▶</button>
   <canvas id="game"></canvas>
 
@@ -73,31 +82,35 @@
     let H = window.innerHeight;
     let dpr = window.devicePixelRatio || 1;
 
-    // 맵 확대 배율
-    const ZOOM = 3;
+    // 맵 크기: 숫자를 낮추면 맵이 작아짐
+    const MAP_SCALE = 1.65;
 
-    // 복도 이미지의 세로 위치 조절
-    const HALLWAY_Y_RATIO = 0.48;
+    // 캐릭터 크기: 숫자를 높이면 캐릭터가 커짐
+    const PLAYER_WIDTH = 96;
+    const PLAYER_HEIGHT = 120;
 
     let mapWidth = 0;
+    let mapHeight = 0;
+    let mapY = 0;
     let cameraX = 0;
-    let hallwayY = 0;
-    let hallwayHeight = 0;
-    let hallwayWidth = 0;
     let floorY = 0;
     let ready = false;
     let finished = false;
     let lastTime = 0;
 
     const player = {
-      x: 30,
+      x: 40,
       y: 0,
-      w: 66,
-      h: 82,
+      w: PLAYER_WIDTH,
+      h: PLAYER_HEIGHT,
       speed: 5,
       frame: 0,
       animTime: 0,
-      moving: false
+      moving: false,
+      facing: 1,
+      velocityY: 0,
+      jumpPower: 13,
+      onGround: true
     };
 
     function resize() {
@@ -120,21 +133,24 @@
         return;
       }
 
-      // 원본 비율을 유지해 맵을 확대
-      hallwayWidth = school.naturalWidth * ZOOM;
-      hallwayHeight = school.naturalHeight * ZOOM;
+      // 복도 이미지의 비율을 유지하며 적당한 크기로 표시
+      mapWidth = school.naturalWidth * MAP_SCALE;
+      mapHeight = school.naturalHeight * MAP_SCALE;
 
-      mapWidth = Math.max(hallwayWidth, W);
+      // 복도 이미지의 어두운 여백을 고려해 배치
+      mapY = H * 0.18;
 
-      // 화면에서 복도가 보이도록 이미지 전체를 중앙에 배치
-      hallwayY = H * HALLWAY_Y_RATIO - hallwayHeight / 2;
-
-      // 캐릭터가 서 있는 바닥
+      // 캐릭터가 서 있을 바닥
       floorY = H * 0.84;
       player.y = floorY - player.h;
 
       player.x = Math.max(0, Math.min(player.x, mapWidth - player.w));
-      cameraX = 0;
+
+      cameraX = Math.max(
+        0,
+        Math.min(player.x - W * 0.3, mapWidth - W)
+      );
+
       ready = true;
     }
 
@@ -143,66 +159,119 @@
 
     school.onerror = () => {
       document.getElementById("help").textContent =
-        "school.png를 불러오지 못했어요.";
+        "school.png 파일을 불러오지 못했어요.";
     };
 
     character.onerror = () => {
       document.getElementById("help").textContent =
-        "character.png를 불러오지 못했어요.";
+        "character.png 파일을 불러오지 못했어요.";
     };
 
     window.addEventListener("resize", resize);
     resize();
 
     window.addEventListener("keydown", (e) => {
-      if (["ArrowLeft", "ArrowRight", "a", "A", "d", "D"].includes(e.key)) {
+      if ([
+        "ArrowLeft", "ArrowRight", "ArrowUp", " ",
+        "a", "A", "d", "D"
+      ].includes(e.key)) {
         e.preventDefault();
       }
+
+      // 키를 처음 누른 순간에만 점프
+      if (
+        (e.code === "Space" || e.key === "ArrowUp") &&
+        !keys[e.code] &&
+        player.onGround &&
+        !finished
+      ) {
+        player.velocityY = -player.jumpPower;
+        player.onGround = false;
+      }
+
       keys[e.key] = true;
+      keys[e.code] = true;
     });
 
     window.addEventListener("keyup", (e) => {
       keys[e.key] = false;
+      keys[e.code] = false;
     });
 
     window.addEventListener("blur", () => {
-      for (const key in keys) keys[key] = false;
+      for (const key in keys) {
+        keys[key] = false;
+      }
     });
 
     nextButton.addEventListener("click", () => {
       player.x = 0;
+      player.velocityY = 0;
+      player.onGround = true;
+      player.facing = 1;
+      player.frame = 0;
       cameraX = 0;
       finished = false;
       nextButton.style.display = "none";
+      player.y = floorY - player.h;
     });
 
     function update(dt) {
       if (!ready || finished) return;
 
+      const factor = Math.min(dt / 16.67, 2);
       const oldX = player.x;
-      const step = player.speed * Math.min(dt / 16.67, 2);
 
-      if (keys.ArrowRight || keys.d || keys.D) player.x += step;
-      if (keys.ArrowLeft || keys.a || keys.A) player.x -= step;
+      // 좌우 이동과 바라보는 방향
+      if (keys.ArrowRight || keys.d || keys.D) {
+        player.x += player.speed * factor;
+        player.facing = 1;
+      }
 
-      player.x = Math.max(0, Math.min(player.x, mapWidth - player.w));
-      player.moving = player.x !== oldX;
+      if (keys.ArrowLeft || keys.a || keys.A) {
+        player.x -= player.speed * factor;
+        player.facing = -1;
+      }
 
-      if (player.moving) {
+      player.x = Math.max(
+        0,
+        Math.min(player.x, mapWidth - player.w)
+      );
+
+      player.moving = Math.abs(player.x - oldX) > 0;
+
+      // 점프와 중력
+      if (!player.onGround) {
+        player.velocityY += 0.65 * factor;
+        player.y += player.velocityY * factor;
+
+        if (player.y + player.h >= floorY) {
+          player.y = floorY - player.h;
+          player.velocityY = 0;
+          player.onGround = true;
+        }
+      }
+
+      // 걷기 애니메이션
+      if (player.moving && player.onGround) {
         player.animTime += dt;
-        if (player.animTime >= 120) {
+
+        if (player.animTime >= 110) {
           player.frame = (player.frame + 1) % 4;
           player.animTime = 0;
         }
+      } else if (!player.onGround) {
+        player.frame = 1;
       } else {
         player.frame = 0;
         player.animTime = 0;
       }
 
-      // 캐릭터를 따라가는 카메라
+      // 카메라가 캐릭터를 따라감
       cameraX = player.x - W * 0.3;
       cameraX = Math.max(0, Math.min(cameraX, mapWidth - W));
 
+      // 복도 끝에 도착
       if (player.x >= mapWidth - player.w - 1) {
         finished = true;
         nextButton.style.display = "block";
@@ -212,7 +281,6 @@
     function draw() {
       ctx.clearRect(0, 0, W, H);
 
-      // 하늘색 대신 복도 이미지와 어울리는 어두운 배경
       ctx.fillStyle = "#101525";
       ctx.fillRect(0, 0, W, H);
 
@@ -223,40 +291,52 @@
         return;
       }
 
-      // 배경 이미지는 한 번만 그려 반복하지 않음
+      // 맵은 반복하지 않고 한 번만 그림
       ctx.drawImage(
         school,
         -cameraX,
-        hallwayY,
-        hallwayWidth,
-        hallwayHeight
+        mapY,
+        mapWidth,
+        mapHeight
       );
 
-      // 캐릭터가 걷는 바닥
+      // 바닥
       ctx.fillStyle = "#343434";
       ctx.fillRect(0, floorY, W, H - floorY);
 
-      // 스프라이트 시트 4열 x 2행
+      // 캐릭터 스프라이트 시트: 4열 x 2행
       const frameW = character.naturalWidth / 4;
       const frameH = character.naturalHeight / 2;
 
-      ctx.imageSmoothingEnabled = false;
+      const sourceX = player.frame * frameW;
+      const sourceY = 0;
 
-      ctx.drawImage(
-        character,
-        player.frame * frameW,
-        0,
-        frameW,
-        frameH,
-        player.x - cameraX,
-        player.y,
-        player.w,
-        player.h
-      );
+      ctx.save();
+
+      // 왼쪽으로 갈 때 캐릭터를 좌우 반전
+      if (player.facing === -1) {
+        ctx.translate(player.x - cameraX + player.w, 0);
+        ctx.scale(-1, 1);
+
+        ctx.drawImage(
+          character,
+          sourceX, sourceY, frameW, frameH,
+          0, player.y, player.w, player.h
+        );
+      } else {
+        ctx.drawImage(
+          character,
+          sourceX, sourceY, frameW, frameH,
+          player.x - cameraX, player.y, player.w, player.h
+        );
+      }
+
+      ctx.restore();
 
       if (finished) {
         ctx.fillStyle = "#0009";
         ctx.fillRect(0, 0, W, H);
+
         ctx.fillStyle = "white";
         ctx.font = "bold 30px sans-serif";
         ctx.textAlign = "center";
@@ -271,6 +351,7 @@
 
       update(dt);
       draw();
+
       requestAnimationFrame(loop);
     }
 
