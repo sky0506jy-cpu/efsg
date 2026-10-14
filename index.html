@@ -3,14 +3,14 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>야자 탈출</title>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101525;font-family:Arial,sans-serif}
 canvas{display:block;width:100vw;height:100vh}
-#help{position:fixed;top:10px;left:10px;z-index:2;padding:10px 13px;border-radius:10px;color:white;background:#000b;line-height:1.5;font-size:14px;pointer-events:none}
-#nextFloor{display:none;position:fixed;top:10px;right:10px;z-index:3;padding:12px 16px;border:0;border-radius:10px;background:#ffd34e;font-weight:bold;font-size:16px;cursor:pointer}
+#help{position:fixed;top:10px;left:10px;z-index:2;background:#000c;color:white;padding:10px 13px;border-radius:10px;line-height:1.5;font-size:14px;pointer-events:none}
+#nextFloor{display:none;position:fixed;right:12px;top:12px;z-index:3;padding:12px 16px;border:0;border-radius:10px;background:#ffd34e;font-weight:bold;cursor:pointer}
 </style>
 </head>
 <body>
@@ -22,7 +22,6 @@ Space / ↑ / W : 점프<br>
 </div>
 <button id="nextFloor">다음 층으로 ▶</button>
 <canvas id="game"></canvas>
-
 <script>
 const canvas=document.getElementById('game');
 const ctx=canvas.getContext('2d');
@@ -39,183 +38,162 @@ assets.src='./assets.png';
 let W=innerWidth,H=innerHeight,dpr=1;
 let ready=false,finished=false;
 let currentFloor=4,lives=3,cameraX=0,lastTime=0;
-let mapWidth=0,floorY=0,bgScale=1;
+let MAP_SCALE=3.5,mapY=0,mapWidth=0,floorY=0;
 let platforms=[],hazards=[],movingPlatforms=[];
 
-const MAX_LIVES=3;
-
-// 플레이어
 const player={
- x:40,y:0,w:52,h:70,
- speed:5.1,jumpPower:16.5,vy:0,
- onGround:false,facing:1,
- invuln:0,frame:0,anim:0
+ x:40,y:0,w:58,h:78,
+ speed:5.5,jumpPower:16.5,vy:0,
+ onGround:false,facing:1,invuln:0,frame:0,anim:0
 };
 
-// assets.png의 실제 스프라이트 위치
-// 좌표는 사용자가 보내준 1536x1024 이미지 기준
 const SPR={
- // 빨간색 표시: 일반 발판 5종
- platformLong: {x:16,y:108,w:294,h:72},
- platformMedium:{x:331,y:108,w:131,h:72},
- platformSmall: {x:487,y:108,w:64,h:72},
- platformBlock: {x:571,y:94,w:106,h:88},
- platformWide:  {x:697,y:109,w:153,h:72},
+ long:   {x:16,y:108,w:294,h:72},
+ medium: {x:331,y:108,w:131,h:72},
+ small:  {x:487,y:108,w:64,h:72},
+ block:  {x:571,y:94,w:106,h:88},
+ wide:   {x:697,y:109,w:153,h:72},
 
- // 초록색 표시: 장애물
- floorSpikes:   {x:1264,y:276,w:110,h:68},
- ceilingSpikes: {x:797,y:408,w:160,h:74},
- redLaser:      {x:958,y:416,w:168,h:66},
- verticalLaser: {x:1137,y:403,w:94,h:145},
- saw:           {x:1267,y:431,w:91,h:87},
- blueLaser:     {x:1373,y:421,w:135,h:111},
-
- // 다른 색칠된 표시 없이 사용하는 장식용 오브젝트는 없음
+ spikes: {x:1264,y:276,w:110,h:68},
+ ceiling:{x:797,y:408,w:160,h:74},
+ redLaser:{x:958,y:416,w:168,h:66},
+ verticalLaser:{x:1137,y:403,w:94,h:145},
+ saw:{x:1267,y:431,w:91,h:87},
+ blueLaser:{x:1373,y:421,w:135,h:111}
 };
 
-function resize(){
+const resize=()=>{
  W=innerWidth;
  H=innerHeight;
  dpr=window.devicePixelRatio||1;
-
  canvas.width=Math.round(W*dpr);
  canvas.height=Math.round(H*dpr);
  canvas.style.width=W+'px';
  canvas.style.height=H+'px';
-
  ctx.setTransform(dpr,0,0,dpr,0,0);
 
- if(school.complete&&school.naturalWidth&&character.complete&&character.naturalWidth){
-  setup(false);
+ if(school.naturalWidth&&character.naturalWidth){
+  MAP_SCALE=3.5;
+  mapWidth=Math.max(W+1,school.naturalWidth*MAP_SCALE);
+  mapY=H*-0.65;
+  floorY=H*.80;
  }
-}
+};
 
-function setup(reset=true){
+const setup=(reset=true)=>{
  if(!school.naturalWidth||!character.naturalWidth)return;
 
- bgScale=Math.max(.5,Math.min(1.15,H/school.naturalHeight));
- mapWidth=Math.max(W*4.2,school.naturalWidth*bgScale*4);
- floorY=Math.round(H*.80);
+ MAP_SCALE=3.5;
+ mapWidth=Math.max(W+1,school.naturalWidth*MAP_SCALE);
+
+ // 배경을 크게 유지하되 바닥과 게임 화면은 아래에 가려지지 않도록 배치
+ mapY=H*-0.65;
+ floorY=H*.80;
 
  if(reset){
   generateLevel();
   resetPlayer();
  }
-
  ready=true;
-}
+};
 
-function generateLevel(){
+const generateLevel=()=>{
  platforms=[];
  hazards=[];
  movingPlatforms=[];
 
- // 층이 내려갈수록 오브젝트가 크게 증가
- const total=40+(4-currentFloor)*14;
- const spacing=(mapWidth-450)/total;
+ // 오브젝트 수를 크게 늘림
+ const total=48+(4-currentFloor)*16;
+ const spacing=(mapWidth-380)/total;
 
- // 시작 지점부터 끝 지점까지 발판을 촘촘히 배치
  for(let i=0;i<total;i++){
-  const x=160+i*spacing;
+  const x=150+i*spacing;
   const variant=i%5;
-  let type='platformMedium';
-  let w=116;
+  let type='medium',w=112;
 
-  if(variant===0){type='platformLong';w=165}
-  if(variant===1){type='platformMedium';w=115}
-  if(variant===2){type='platformSmall';w=70}
-  if(variant===3){type='platformBlock';w=90}
-  if(variant===4){type='platformWide';w=145}
+  if(variant===0){type='long';w=170}
+  if(variant===1){type='medium';w=112}
+  if(variant===2){type='small';w=70}
+  if(variant===3){type='block';w=90}
+  if(variant===4){type='wide';w=145}
 
-  // 너무 높이 튀지 않도록 점프 가능한 높이 차이 유지
-  let height;
-  if(i%6===0)height=155;
-  else if(i%3===0)height=105;
-  else height=65+(i%2)*20;
-
+  const height=i%6===0?170:i%3===0?120:75+(i%2)*25;
   const y=floorY-height;
 
-  platforms.push({
-   x,y,w,h:24,type,
-   source:SPR[type]
-  });
+  platforms.push({x,y,w,h:27,type});
 
-  // 가시 발판: 착지 위치와 겹치지 않게 배치
-  if(i%3===1||(currentFloor<=2&&i%3===0)){
-   const hx=x+Math.max(25,w*.55);
+  // 바닥 가시
+  if(i%2===1||(currentFloor<=2&&i%3===0)){
    hazards.push({
-    x:hx,y:floorY-34,w:66,h:34,type:'floorSpikes'
+    x:x+w+Math.max(12,spacing*.14),
+    y:floorY-34,w:58,h:34,type:'spikes'
    });
   }
 
-  // 일부 발판 위에 공중 장애물
-  if(currentFloor<=3&&i%7===3){
+  // 발판 주변의 가시
+  if(currentFloor<=3&&i%6===2){
    hazards.push({
-    x:x+w+12,y:y-55,w:72,h:34,type:'floorSpikes'
+    x:x+w+14,y:y-45,w:54,h:34,type:'spikes'
    });
   }
 
-  // 천장 가시는 더 아래층에서 등장
-  if(currentFloor<=2&&i%9===5){
+  // 천장 가시
+  if(currentFloor<=3&&i%8===4){
    hazards.push({
-    x:x+30,y:y-115,w:96,h:45,type:'ceilingSpikes'
+    x:x+20,y:y-100,w:100,h:48,type:'ceiling'
    });
   }
 
-  // 레이저 장애물
-  if(currentFloor<=3&&i%10===6){
+  // 수평 레이저
+  if(currentFloor<=3&&i%9===5){
    hazards.push({
-    x:x+w+18,y:y-48,w:94,h:34,type:'redLaser'
+    x:x+w+20,y:y-52,w:100,h:35,type:'redLaser'
    });
   }
 
-  if(currentFloor===1&&i%13===8){
+  // 수직 레이저와 회전 톱은 최종 층에 추가
+  if(currentFloor===1&&i%11===6){
    hazards.push({
-    x:x+w+12,y:y-90,w:40,h:86,type:'verticalLaser'
+    x:x+w+15,y:y-90,w:38,h:78,type:'verticalLaser'
    });
   }
 
-  if(currentFloor===1&&i%11===4){
+  if(currentFloor===1&&i%10===3){
    hazards.push({
-    x:x+w+15,y:y-42,w:48,h:48,type:'saw'
+    x:x+w+18,y:y-42,w:44,h:44,type:'saw'
    });
   }
 
-  if(currentFloor===1&&i%12===9){
+  if(currentFloor===1&&i%12===8){
    hazards.push({
-    x:x+w+20,y:y-70,w:70,h:52,type:'blueLaser'
+    x:x+w+18,y:y-66,w:76,h:50,type:'blueLaser'
    });
   }
  }
 
- // 움직이는 발판 추가
- for(let i=0;i<Math.floor(total/6);i++){
-  const x=350+i*spacing*6;
-  const y=floorY-190-(i%2)*35;
+ // 움직이는 발판
+ for(let i=0;i<Math.floor(total/5);i++){
+  const x=300+i*spacing*5;
+  const y=floorY-190-(i%3)*30;
 
   movingPlatforms.push({
-   x,y,baseY:y,w:116,h:24,
-   phase:i*1.7,
-   direction:i%2===0?1:-1,
-   type:i%2===0?'platformLong':'platformMedium'
+   x,y,baseX:x,baseY:y,w:120,h:27,
+   phase:i*1.4,direction:i%2===0?1:-1,
+   type:i%2===0?'long':'medium'
   });
  }
 
- // 시작 발판
  platforms.unshift({
-  x:35,y:floorY-45,w:165,h:24,
-  type:'platformLong',source:SPR.platformLong
+  x:30,y:floorY-60,w:170,h:27,type:'long'
  });
 
- // 마지막 발판
  platforms.push({
-  x:mapWidth-205,y:floorY-65,w:165,h:24,
-  type:'platformLong',source:SPR.platformLong
+  x:mapWidth-205,y:floorY-70,w:170,h:27,type:'long'
  });
-}
+};
 
-function resetPlayer(){
- player.x=45;
+const resetPlayer=()=>{
+ player.x=35;
  player.y=floorY-player.h;
  player.vy=0;
  player.onGround=true;
@@ -224,32 +202,32 @@ function resetPlayer(){
  player.anim=0;
  player.invuln=1000;
  cameraX=0;
-}
+};
 
-school.onload=()=>{
- if(character.complete&&character.naturalWidth)setup(true);
-};
-character.onload=()=>{
- if(school.complete&&school.naturalWidth)setup(true);
-};
+school.onload=()=>setup(true);
+character.onload=()=>setup(true);
 assets.onload=()=>draw();
 
-school.onerror=()=>console.error('school.png를 찾을 수 없습니다.');
-character.onerror=()=>console.error('character.png를 찾을 수 없습니다.');
-assets.onerror=()=>console.error('assets.png를 찾을 수 없습니다.');
+school.onerror=()=>console.error('school.png 파일을 확인해 주세요.');
+character.onerror=()=>console.error('character.png 파일을 확인해 주세요.');
+assets.onerror=()=>console.error('assets.png 파일을 확인해 주세요.');
 
-window.addEventListener('resize',resize);
+window.addEventListener('resize',()=>{
+ resize();
+ setup(false);
+});
+
 resize();
 
 const keys={};
 
 window.addEventListener('keydown',e=>{
- const jump=['Space','ArrowUp','KeyW'].includes(e.code);
-
  if(['ArrowLeft','ArrowRight','ArrowUp',' '].includes(e.key)||
-    ['KeyA','KeyD','KeyW','Space'].includes(e.code)){
+ ['KeyA','KeyD','KeyW','Space'].includes(e.code)){
   e.preventDefault();
  }
+
+ const jump=['Space','ArrowUp','KeyW'].includes(e.code);
 
  if(jump&&!keys[e.code]&&player.onGround&&!finished){
   player.vy=-player.jumpPower;
@@ -266,34 +244,28 @@ window.addEventListener('keyup',e=>{
 });
 
 window.addEventListener('blur',()=>{
- for(const key in keys)keys[key]=false;
+ Object.keys(keys).forEach(k=>keys[k]=false);
 });
 
-function hit(a,b){
- return a.x<b.x+b.w&&
-        a.x+a.w>b.x&&
-        a.y<b.y+b.h&&
-        a.y+a.h>b.y;
-}
+const hit=(a,b)=>
+ a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 
-function loseLife(){
+const loseLife=()=>{
  if(player.invuln>0)return;
-
  lives--;
 
  if(lives<=0){
-  lives=MAX_LIVES;
+  lives=3;
   generateLevel();
  }
 
  resetPlayer();
-}
+};
 
-function update(dt){
+const update=(dt)=>{
  if(!ready||finished)return;
 
  const f=Math.min(dt/16.67,2);
-
  if(player.invuln>0)player.invuln-=dt;
 
  const oldX=player.x;
@@ -302,7 +274,6 @@ function update(dt){
   player.x+=player.speed*f;
   player.facing=1;
  }
-
  if(keys.ArrowLeft||keys.KeyA||keys.a||keys.A){
   player.x-=player.speed*f;
   player.facing=-1;
@@ -311,82 +282,66 @@ function update(dt){
  player.x=Math.max(0,Math.min(mapWidth-player.w,player.x));
 
  const previousBottom=player.y+player.h;
-
  player.vy+=.58*f;
  player.y+=player.vy*f;
  player.onGround=false;
 
- // 바닥은 화면 안쪽에 고정
  if(player.y+player.h>=floorY){
   player.y=floorY-player.h;
   player.vy=0;
   player.onGround=true;
  }
 
- // 발판 착지
- for(const p of platforms){
-  if(player.vy>=0&&
-     player.x+player.w-7>p.x&&
-     player.x+7<p.x+p.w&&
-     previousBottom<=p.y+14&&
+ platforms.forEach(p=>{
+  if(player.vy>=0&&player.x+player.w-7>p.x&&
+     player.x+7<p.x+p.w&&previousBottom<=p.y+14&&
      player.y+player.h>=p.y){
    player.y=p.y-player.h;
    player.vy=0;
    player.onGround=true;
   }
- }
+ });
 
- // 움직이는 발판
  const now=performance.now();
 
- for(const p of movingPlatforms){
-  p.y=p.baseY+Math.sin(now/430+p.phase)*24;
-  p.x+=p.direction*.35*f;
+ movingPlatforms.forEach(p=>{
+  p.y=p.baseY+Math.sin(now/430+p.phase)*25;
+  p.x+=p.direction*.4*f;
 
-  if(p.x<100||p.x+p.w>mapWidth-100){
-   p.direction*=-1;
-  }
+  if(p.x<p.baseX-55||p.x>p.baseX+55)p.direction*=-1;
 
-  if(player.vy>=0&&
-     player.x+player.w-7>p.x&&
-     player.x+7<p.x+p.w&&
-     previousBottom<=p.y+14&&
+  if(player.vy>=0&&player.x+player.w-7>p.x&&
+     player.x+7<p.x+p.w&&previousBottom<=p.y+14&&
      player.y+player.h>=p.y){
    player.y=p.y-player.h;
    player.vy=0;
    player.onGround=true;
   }
- }
+ });
 
- // 장애물 충돌
  if(player.invuln<=0){
   const body={
-   x:player.x+10,
-   y:player.y+8,
-   w:player.w-20,
-   h:player.h-13
+   x:player.x+10,y:player.y+8,
+   w:player.w-20,h:player.h-13
   };
 
-  for(const h of hazards){
+  hazards.some(h=>{
    const box={
-    x:h.x+8,
-    y:h.y+7,
-    w:Math.max(8,h.w-16),
-    h:Math.max(8,h.h-12)
+    x:h.x+7,y:h.y+6,
+    w:Math.max(8,h.w-14),h:Math.max(8,h.h-10)
    };
 
    if(hit(body,box)){
     loseLife();
-    break;
+    return true;
    }
-  }
+   return false;
+  });
  }
 
- // 걷기 애니메이션
  if(Math.abs(player.x-oldX)>.1&&player.onGround){
   player.anim+=dt;
-
-  if(player.anim>110){
+  if(player.anim>105){
    player.frame=(player.frame+1)%4;
    player.anim=0;
   }
@@ -396,50 +351,45 @@ function update(dt){
   player.frame=0;
  }
 
- // 카메라가 캐릭터를 따라감
  cameraX=Math.max(0,Math.min(player.x-W*.32,mapWidth-W));
 
- // 끝 지점
- if(player.x>=mapWidth-player.w-3){
+ if(player.x>=mapWidth-player.w-2){
   finished=true;
   nextButton.style.display='block';
   nextButton.textContent=currentFloor>1?
-   '다음 층으로 내려가기 ▶':
-   '🎉 탈출 완료! 다시 하기';
+   '다음 층으로 내려가기 ▶':'🎉 탈출 완료! 다시 하기';
  }
-}
+};
 
-function drawSprite(name,x,y,w,h){
+const drawSprite=(name,x,y,w,h)=>{
  const s=SPR[name];
 
- if(!s||!assets.complete||!assets.naturalWidth){
-  return false;
- }
+ if(!s||!assets.complete||!assets.naturalWidth)return false;
 
  ctx.drawImage(
-  assets,
-  s.x,s.y,s.w,s.h,
+  assets,s.x,s.y,s.w,s.h,
   Math.round(x-cameraX),Math.round(y),w,h
  );
-
  return true;
-}
+};
 
-function drawPlatform(p){
+const drawPlatform=(p)=>{
  if(drawSprite(p.type,p.x,p.y,p.w,p.h))return;
 
  ctx.fillStyle='#3478c7';
  ctx.fillRect(p.x-cameraX,p.y,p.w,p.h);
-}
+ ctx.fillStyle='#9acaff';
+ ctx.fillRect(p.x-cameraX,p.y,p.w,4);
+};
 
-function drawHazard(h){
+const drawHazard=(h)=>{
  if(drawSprite(h.type,h.x,h.y,h.w,h.h))return;
 
  ctx.fillStyle='#ff334f';
  ctx.fillRect(h.x-cameraX,h.y,h.w,h.h);
-}
+};
 
-function draw(){
+const draw=()=>{
  ctx.clearRect(0,0,W,H);
  ctx.fillStyle='#101525';
  ctx.fillRect(0,0,W,H);
@@ -451,54 +401,42 @@ function draw(){
   return;
  }
 
- // 배경을 반복해서 긴 맵 구성
- const bgW=school.naturalWidth*bgScale;
- const bgH=Math.min(H*.72,school.naturalHeight*bgScale);
+ // 원래 큰 맵 스케일 유지. 배경만 화면에 맞춰 세로로 표시
+ const bgW=school.naturalWidth*MAP_SCALE;
+ const bgH=school.naturalHeight*MAP_SCALE;
 
  for(let x=0;x<mapWidth;x+=bgW){
   ctx.drawImage(
    school,
    x-cameraX,
-   Math.max(0,floorY-bgH),
+   mapY,
    bgW,
    bgH
   );
  }
 
- // 바닥과 플레이 영역
+ // 바닥과 HUD가 화면 밖으로 내려가지 않게 고정
  ctx.fillStyle='#101525';
  ctx.fillRect(0,floorY,W,H-floorY);
-
  ctx.fillStyle='#26324b';
  ctx.fillRect(0,floorY-8,W,10);
 
- // 발판
- for(const p of platforms){
-  if(p.x-cameraX<W+200&&p.x-cameraX+p.w>-200){
-   drawPlatform(p);
-  }
- }
+ platforms.forEach(p=>{
+  if(p.x-cameraX<W+200&&p.x-cameraX+p.w>-200)drawPlatform(p);
+ });
 
- // 움직이는 발판
- for(const p of movingPlatforms){
-  if(p.x-cameraX<W+150&&p.x-cameraX+p.w>-150){
-   drawPlatform(p);
-  }
- }
+ movingPlatforms.forEach(p=>{
+  if(p.x-cameraX<W+150&&p.x-cameraX+p.w>-150)drawPlatform(p);
+ });
 
- // 장애물
- for(const h of hazards){
-  if(h.x-cameraX<W+160&&h.x-cameraX+h.w>-160){
-   drawHazard(h);
-  }
- }
+ hazards.forEach(h=>{
+  if(h.x-cameraX<W+160&&h.x-cameraX+h.w>-160)drawHazard(h);
+ });
 
- // 캐릭터
  const px=player.x-cameraX;
  const fw=character.naturalWidth/4;
  const fh=character.naturalHeight/2;
  const sx=(player.frame%4)*fw;
- const sy=0;
 
  ctx.save();
 
@@ -509,24 +447,18 @@ function draw(){
  if(player.facing<0){
   ctx.translate(px+player.w,0);
   ctx.scale(-1,1);
-  ctx.drawImage(
-   character,sx,sy,fw,fh,
-   0,player.y,player.w,player.h
-  );
+  ctx.drawImage(character,sx,0,fw,fh,0,player.y,player.w,player.h);
  }else{
-  ctx.drawImage(
-   character,sx,sy,fw,fh,
-   px,player.y,player.w,player.h
-  );
+  ctx.drawImage(character,sx,0,fw,fh,px,player.y,player.w,player.h);
  }
 
  ctx.restore();
 
- // HUD: 코인과 체크포인트 표시 없음
- ctx.fillStyle='#000b';
- ctx.fillRect(12,110,205,68);
+ // 코인과 체크포인트 깃발 표시 없음
+ ctx.fillStyle='#000c';
+ ctx.fillRect(12,110,210,68);
 
- ctx.fillStyle='#fff';
+ ctx.fillStyle='white';
  ctx.font='bold 20px sans-serif';
  ctx.fillText(`야자 탈출 - ${currentFloor}층`,22,138);
 
@@ -534,48 +466,39 @@ function draw(){
  ctx.fillStyle='#ff5c72';
  ctx.fillText('❤️'.repeat(lives),22,166);
 
- // 클리어 화면
  if(finished){
   ctx.fillStyle='#000c';
   ctx.fillRect(0,0,W,H);
-
   ctx.fillStyle='white';
   ctx.textAlign='center';
   ctx.font='bold 28px sans-serif';
-
   ctx.fillText(
    currentFloor>1?
    `${currentFloor}층 통과! 다음 층으로 내려가자!`:
    '🎉 1층 탈출 성공! 야자 탈출 완료!',
    W/2,H/2
   );
-
   ctx.textAlign='left';
  }
-}
+};
 
 nextButton.addEventListener('click',()=>{
- if(currentFloor>1){
-  currentFloor--;
- }else{
-  currentFloor=4;
- }
-
- lives=MAX_LIVES;
+ currentFloor=currentFloor>1?currentFloor-1:4;
+ lives=3;
  finished=false;
  nextButton.style.display='none';
-
  generateLevel();
  resetPlayer();
 });
 
-function loop(t){
+let loop;
+loop=(t)=>{
  const dt=lastTime?Math.min(t-lastTime,40):16.67;
  lastTime=t;
  update(dt);
  draw();
  requestAnimationFrame(loop);
-}
+};
 
 requestAnimationFrame(loop);
 </script>
