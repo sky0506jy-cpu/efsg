@@ -664,3 +664,220 @@ function update(dt) {
 function drawPlatform(p) {
   const x = p.x - cameraX;
 
+  if (assets.complete && assets.naturalWidth > 0) {
+    ctx.drawImage(
+      assets,
+      16, 108, 294, 72,
+      x, p.y, p.w, p.h
+    );
+  } else {
+    ctx.fillStyle = p.type === "start"
+      ? "#526d8e"
+      : p.type === "small"
+        ? "#476a9f"
+        : "#3b5b92";
+
+    ctx.fillRect(x, p.y, p.w, p.h);
+
+    ctx.fillStyle = "#8ebaff";
+    ctx.fillRect(x, p.y, p.w, 5);
+
+    ctx.strokeStyle = "#223a61";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, p.y, p.w, p.h);
+  }
+}
+
+function drawHazard(h) {
+  const x = h.x - cameraX;
+
+  if (h.type === "platformSpike") {
+    // 발판 위 가시를 뾰족한 삼각형으로 표시
+    ctx.fillStyle = "#ff654f";
+    ctx.beginPath();
+    ctx.moveTo(x, h.y + h.h);
+    ctx.lineTo(x + h.w * 0.5, h.y);
+    ctx.lineTo(x + h.w, h.y + h.h);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "#ffb5a7";
+    ctx.beginPath();
+    ctx.moveTo(x + h.w * 0.35, h.y + h.h * 0.65);
+    ctx.lineTo(x + h.w * 0.5, h.y + h.h * 0.2);
+    ctx.lineTo(x + h.w * 0.65, h.y + h.h * 0.65);
+    ctx.closePath();
+    ctx.fill();
+
+    return;
+  }
+
+  if (assets.complete && assets.naturalWidth > 0) {
+    ctx.drawImage(
+      assets,
+      1260, 275, 110, 70,
+      x, h.y, h.w, h.h
+    );
+  } else {
+    ctx.fillStyle = "#e53945";
+    ctx.beginPath();
+
+    const spikeCount = Math.max(2, Math.floor(h.w / 18));
+    const spikeWidth = h.w / spikeCount;
+
+    ctx.moveTo(x, h.y + h.h);
+
+    for (let i = 0; i < spikeCount; i++) {
+      ctx.lineTo(
+        x + i * spikeWidth + spikeWidth / 2,
+        h.y
+      );
+      ctx.lineTo(
+        x + (i + 1) * spikeWidth,
+        h.y + h.h
+      );
+    }
+
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "#ff8b8b";
+    ctx.fillRect(x, h.y + h.h - 5, h.w, 5);
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#101525";
+  ctx.fillRect(0, 0, W, H);
+
+  if (!ready) {
+    ctx.fillStyle = "white";
+    ctx.font = "18px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(
+      imageError || "이미지를 불러오는 중...",
+      20,
+      60
+    );
+    return;
+  }
+
+  if (school.complete && school.naturalWidth > 0) {
+    ctx.drawImage(
+      school,
+      -cameraX,
+      mapY,
+      school.naturalWidth * MAP_SCALE,
+      mapHeight
+    );
+  }
+
+  for (const p of platforms) {
+    if (
+      p.x - cameraX < W + 150 &&
+      p.x - cameraX + p.w > -150
+    ) {
+      drawPlatform(p);
+    }
+  }
+
+  for (const h of hazards) {
+    if (
+      h.x - cameraX < W + 150 &&
+      h.x - cameraX + h.w > -150
+    ) {
+      drawHazard(h);
+    }
+  }
+
+  const frameW = character.naturalWidth / 4;
+  const frameH = character.naturalHeight / 2;
+  const sx = (player.frame % 4) * frameW;
+  const sy = player.frame >= 4 ? frameH : 0;
+
+  ctx.save();
+
+  if (player.facing === -1) {
+    ctx.translate(player.x - cameraX + player.w, 0);
+    ctx.scale(-1, 1);
+
+    ctx.drawImage(
+      character,
+      sx, sy, frameW, frameH,
+      0, player.y, player.w, player.h
+    );
+  } else {
+    ctx.drawImage(
+      character,
+      sx, sy, frameW, frameH,
+      player.x - cameraX, player.y, player.w, player.h
+    );
+  }
+
+  ctx.restore();
+
+  ctx.textAlign = "left";
+  ctx.fillStyle = "white";
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText(`🏫 야자 탈출 - ${currentFloor}층 복도`, 20, 125);
+
+  ctx.font = "bold 25px sans-serif";
+  ctx.fillStyle = "#ff5b70";
+  ctx.fillText("❤️".repeat(lives), 20, 160);
+
+  ctx.fillStyle = "white";
+  ctx.font = "16px sans-serif";
+  ctx.fillText(`목숨 ${lives}/${MAX_LIVES}`, 20, 185);
+
+  const difficultyNames = {
+    4: "쉬움",
+    3: "보통",
+    2: "어려움",
+    1: "매우 어려움"
+  };
+
+  ctx.fillStyle = "#ffd34e";
+  ctx.font = "bold 16px sans-serif";
+  ctx.fillText(
+    `난이도: ${difficultyNames[currentFloor]}`,
+    20,
+    210
+  );
+
+  if (finished) {
+    ctx.fillStyle = "#0009";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = "white";
+    ctx.font = "bold 30px sans-serif";
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+      currentFloor > 1
+        ? `${currentFloor}층 복도 끝에 도착했다! 아래층으로!`
+        : "🎉 1층 탈출 성공! 야자 탈출 완료!",
+      W / 2,
+      H / 2
+    );
+
+    ctx.textAlign = "left";
+  }
+}
+
+function loop(time) {
+  const dt = lastTime
+    ? Math.min(time - lastTime, 50)
+    : 16.67;
+
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
+```
