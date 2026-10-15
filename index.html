@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -7,6 +6,7 @@
 <title>야자 탈출</title>
 <style>
 * { box-sizing: border-box; }
+
 html, body {
   margin: 0;
   width: 100%;
@@ -15,11 +15,13 @@ html, body {
   background: #101525;
   font-family: sans-serif;
 }
+
 canvas {
   display: block;
   width: 100vw;
   height: 100vh;
 }
+
 #help {
   position: fixed;
   top: 12px;
@@ -33,6 +35,7 @@ canvas {
   font-size: 14px;
   pointer-events: none;
 }
+
 #nextFloor {
   display: none;
   position: fixed;
@@ -49,6 +52,7 @@ canvas {
 }
 </style>
 </head>
+
 <body>
 
 <div id="help">
@@ -101,11 +105,13 @@ let cameraX = 0;
 const MAP_SCALE = 3.5;
 const PLAYER_W = 82;
 const PLAYER_H = 108;
-
-// 점프가 도달할 수 있는 범위를 고려한 설정
-const MAX_JUMP_GAP = 145;
-const MIN_PLATFORM_GAP = 65;
 const PLATFORM_HEIGHT = 30;
+
+// 점프 가능한 범위보다 충분히 짧게 발판 간격을 제한
+const MAX_JUMP_GAP = 100;
+const MAX_SAFE_GAP = 82;
+const MAX_PLATFORM_RISE = 35;
+const MIN_PLATFORM_GAP = 48;
 
 const player = {
   x: 35,
@@ -133,105 +139,131 @@ function randomInt(min, max) {
   return Math.floor(randomRange(min, max + 1));
 }
 
-function fnMapGenerate() {
-  platforms = [];
-  hazards = [];
+// 층이 낮아질수록 난이도가 증가
+function getDifficulty() {
+  return 4 - currentFloor;
+}
 
-  if (!mapWidth || !floorY) return;
+// 시작 발판과 출구 발판 사이에
+// 점프로 도달할 수 있는 발판을 차례대로 배치
+function generatePlatforms(finishX) {
+  const result = [];
 
-  const startX = 0;
-  const endX = mapWidth - 180;
-
-  // 시작 발판
-  platforms.push({
-    x: startX,
+  result.push({
+    x: 0,
     y: floorY,
     w: 235,
     h: PLATFORM_HEIGHT,
     type: "start"
   });
 
-  // 끝 발판: 출구에 반드시 연결
-  platforms.push({
-    x: Math.max(235, endX - 100),
-    y: floorY - 35,
-    w: Math.max(180, mapWidth - Math.max(235, endX - 100)),
+  let lastX = 235;
+  let lastY = floorY;
+  const difficulty = getDifficulty();
+
+  while (lastX < finishX) {
+    const remaining = finishX - lastX;
+
+    // 마지막 구간도 안전한 거리로 연결
+    if (remaining <= MAX_SAFE_GAP + 100) {
+      const gap = Math.max(
+        30,
+        Math.min(MAX_SAFE_GAP, remaining - 95)
+      );
+
+      const px = lastX + gap;
+      const pw = Math.max(100, finishX - px);
+
+      if (px + pw >= finishX + 180) {
+        result.push({
+          x: px,
+          y: floorY - 35,
+          w: Math.max(100, finishX - px),
+          h: PLATFORM_HEIGHT,
+          type: "normal"
+        });
+        break;
+      }
+
+      result.push({
+        x: px,
+        y: Math.max(floorY - 85, Math.min(floorY, lastY)),
+        w: Math.max(100, finishX - px),
+        h: PLATFORM_HEIGHT,
+        type: "normal"
+      });
+      break;
+    }
+
+    // 난이도가 높을수록 간격이 조금 넓어지지만
+    // 점프로 이동할 수 있는 범위를 넘지 않음
+    const minGap = 45 + difficulty * 5;
+    const maxGap = Math.min(
+      MAX_SAFE_GAP,
+      62 + difficulty * 6
+    );
+
+    const gap = randomInt(minGap, maxGap);
+    const px = lastX + gap;
+
+    // 높이 차이도 점프 가능한 범위로 제한
+    const verticalChange = randomInt(
+      -15 - difficulty * 2,
+      12 + difficulty * 2
+    );
+
+    let py = lastY + verticalChange;
+    py = Math.max(floorY - 95, Math.min(floorY, py));
+
+    const pw = randomInt(125, 165);
+
+    result.push({
+      x: px,
+      y: py,
+      w: pw,
+      h: PLATFORM_HEIGHT,
+      type: Math.random() < 0.25 ? "small" : "normal"
+    });
+
+    lastX = px + pw;
+    lastY = py;
+
+    if (result.length > 2000) break;
+  }
+
+  // 출구 발판을 넓게 만들어 마지막 착지를 쉽게 함
+  result.push({
+    x: finishX,
+    y: floorY - 25,
+    w: Math.max(200, mapWidth - finishX),
     h: PLATFORM_HEIGHT,
     type: "finish"
   });
 
-  const finishPlatform = platforms[1];
-  const finishX = finishPlatform.x;
+  result.sort((a, b) => a.x - b.x);
 
-  // 출발 발판부터 끝 발판까지 일정 간격으로 연결
-  let lastX = 235;
-  let lastY = floorY - 45;
+  // 겹치거나 지나치게 멀어진 발판 사이를 보정
+  const fixed = [];
 
-  const difficulty = 4 - currentFloor;
+  for (const p of result) {
+    if (fixed.length === 0) {
+      fixed.push(p);
+      continue;
+    }
 
-  while (lastX + 120 < finishX) {
-    const remaining = finishX - lastX;
+    const prev = fixed[fixed.length - 1];
+    const gap = p.x - (prev.x + prev.w);
 
-    // 간격을 안전한 범위로 제한
-    const gap = Math.min(
-      randomInt(75, 115 + difficulty * 5),
-      remaining - 100
-    );
-
-    if (gap < MIN_PLATFORM_GAP) break;
-
-    const px = lastX + gap;
-    const pw = randomInt(115, 165);
-
-    // 높이 차이는 작게 제한
-    const verticalChange = randomInt(-22, 22);
-    let py = lastY + verticalChange;
-
-    py = Math.max(
-      floorY - 105,
-      Math.min(floorY - 25, py)
-    );
-
-    // 다음 발판까지 점프 가능한 수평 거리를 고려
-    platforms.push({
-      x: px,
-      y: py,
-      w: Math.min(pw, finishX - px),
-      h: PLATFORM_HEIGHT,
-      type: Math.random() < 0.3 ? "small" : "normal"
-    });
-
-    lastX = px + Math.min(pw, finishX - px);
-    lastY = py;
-
-    if (platforms.length > 500) break;
-  }
-
-  // 끝 발판과 연결되는 중간 발판이 부족하면 보충
-  let previous = platforms[0];
-
-  const ordered = platforms
-    .filter(p => p.type !== "finish")
-    .sort((a, b) => a.x - b.x);
-
-  for (const next of ordered.slice(1)) {
-    const gap = next.x - (previous.x + previous.w);
-
-    if (gap > MAX_JUMP_GAP) {
-      const count = Math.ceil(gap / 110);
+    if (gap > MAX_SAFE_GAP) {
+      const count = Math.ceil(gap / MAX_SAFE_GAP);
 
       for (let i = 1; i < count; i++) {
-        const px = previous.x + previous.w +
-          (gap / count) * i - 45;
+        const px =
+          prev.x + prev.w + (gap / count) * i - 45;
 
-        const py = Math.max(
-          floorY - 100,
-          Math.min(floorY - 25, previous.y)
-        );
-
-        platforms.push({
+        fixed.push({
           x: px,
-          y: py,
+          y: prev.y,
           w: 100,
           h: PLATFORM_HEIGHT,
           type: "normal"
@@ -239,46 +271,49 @@ function fnMapGenerate() {
       }
     }
 
-    previous = next;
+    fixed.push(p);
   }
 
-  // 끝 발판 직전에도 발판이 이어지도록 보충
-  platforms.sort((a, b) => a.x - b.x);
+  fixed.sort((a, b) => a.x - b.x);
+  return fixed;
+}
 
-  let lastPlatform = platforms[platforms.length - 2];
+function fnMapGenerate() {
+  platforms = [];
+  hazards = [];
 
-  if (lastPlatform) {
-    while (
-      finishPlatform.x -
-      (lastPlatform.x + lastPlatform.w) >
-      MAX_JUMP_GAP
-    ) {
-      const px = lastPlatform.x + lastPlatform.w + 80;
+  if (!mapWidth || !floorY) return;
 
-      platforms.push({
-        x: px,
-        y: floorY - 45,
-        w: 100,
-        h: PLATFORM_HEIGHT,
-        type: "normal"
-      });
+  const finishX = Math.max(300, mapWidth - 230);
+  platforms = generatePlatforms(finishX);
 
-      lastPlatform = platforms[platforms.length - 1];
-    }
-  }
+  const difficulty = getDifficulty();
 
-  // 바닥 장애물: 시작과 끝에는 안전 구역 확보
-  const hazardStart = 270;
-  const hazardEnd = finishPlatform.x - 100;
-  let hx = hazardStart + randomInt(40, 100);
+  // 시작과 출구 근처는 장애물 없이 안전하게 유지
+  const hazardStart = 290;
+  const hazardEnd = finishX - 140;
+
+  // 아래층일수록 바닥 장애물 사이 간격을 줄임
+  let hx = hazardStart + randomInt(30, 70);
+
+  const hazardSpacing = [
+    [300, 390], // 4층
+    [250, 335], // 3층
+    [210, 290], // 2층
+    [175, 250]  // 1층
+  ][difficulty];
 
   while (hx < hazardEnd) {
-    const hw = randomInt(38, 55);
-    const hh = randomInt(30, 40);
+    const hw = randomInt(
+      35 + difficulty * 2,
+      48 + difficulty * 3
+    );
+    const hh = randomInt(28, 40 + difficulty * 2);
 
+    // 발판 주변의 착지 공간은 막지 않음
     const nearPlatform = platforms.some(p =>
-      hx + hw > p.x - 25 &&
-      hx < p.x + p.w + 25
+      hx + hw > p.x - 32 &&
+      hx < p.x + p.w + 32
     );
 
     if (!nearPlatform) {
@@ -291,28 +326,41 @@ function fnMapGenerate() {
       });
     }
 
-    hx += randomInt(280, 380);
+    hx += randomInt(
+      hazardSpacing[0],
+      hazardSpacing[1]
+    );
   }
 
-  // 일부 발판 위 장애물
+  // 발판 위 가시: 아래층일수록 등장 확률 증가
+  const platformHazardChance = [0.08, 0.16, 0.25, 0.34][difficulty];
+
   for (const p of platforms) {
     if (
       p.type === "start" ||
       p.type === "finish" ||
-      p.w < 155 ||
-      Math.random() > 0.1
+      p.w < 145 ||
+      Math.random() > platformHazardChance
     ) {
       continue;
     }
 
-    const hw = 28;
-    const hx = p.x + randomInt(25, Math.max(26, p.w - hw - 20));
+    // 가시를 발판 중앙에만 배치하고
+    // 양쪽에 착지할 수 있는 공간을 남김
+    const hw = randomInt(22, 30);
+    const margin = 30;
+    const available = p.w - hw - margin * 2;
+
+    if (available <= 0) continue;
+
+    const hx = p.x + margin +
+      randomInt(0, Math.floor(available));
 
     hazards.push({
       x: hx,
-      y: p.y - 28,
+      y: p.y - 27,
       w: hw,
-      h: 28,
+      h: 27,
       type: "platformSpike"
     });
   }
@@ -332,7 +380,6 @@ function resize() {
   canvas.style.height = H + "px";
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
   setup();
 }
 
@@ -354,13 +401,8 @@ function setup() {
   floorY = Math.min(backgroundFloorY, H - PLAYER_H - 10);
 
   fnMapGenerate();
+  resetPlayer();
 
-  player.x = 35;
-  player.y = floorY - player.h;
-  player.velocityY = 0;
-  player.onGround = true;
-
-  cameraX = 0;
   ready = true;
   imageError = "";
 }
@@ -457,6 +499,7 @@ function loseLife() {
     return;
   }
 
+  // 목숨을 잃어도 같은 층에서 다시 도전
   fnMapGenerate();
   resetPlayer();
   resetting = false;
@@ -534,13 +577,12 @@ function update(dt) {
     }
   }
 
-  // 발판을 놓치고 바닥까지 떨어지면 목숨 차감
+  // 발판을 놓치면 목숨 차감
   if (player.y + player.h >= floorY && !player.onGround) {
     loseLife();
     return;
   }
 
-  // 화면 아래로 완전히 떨어지는 경우도 처리
   if (player.y > H + 100) {
     loseLife();
     return;
@@ -641,6 +683,7 @@ function drawHazard(h) {
     ctx.lineTo(x + h.w * 0.65, h.y + h.h * 0.65);
     ctx.closePath();
     ctx.fill();
+
     return;
   }
 
@@ -762,6 +805,21 @@ function draw() {
   ctx.font = "16px sans-serif";
   ctx.fillText(`목숨 ${lives}/${MAX_LIVES}`, 20, 185);
 
+  const difficultyNames = [
+    "쉬움",
+    "보통",
+    "어려움",
+    "매우 어려움"
+  ];
+
+  ctx.fillStyle = "#ffd34e";
+  ctx.font = "bold 16px sans-serif";
+  ctx.fillText(
+    `난이도: ${difficultyNames[getDifficulty()]}`,
+    20,
+    210
+  );
+
   if (finished) {
     ctx.fillStyle = "#0009";
     ctx.fillRect(0, 0, W, H);
@@ -797,4 +855,3 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
-```
