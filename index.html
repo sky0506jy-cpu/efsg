@@ -297,9 +297,8 @@ function setup() {
 
   mapHeight = school.naturalHeight * MAP_SCALE;
 
-  // 배경의 왼쪽은 시작점으로 유지하고,
-  // 배경의 세로 중앙을 화면의 세로 중앙에 맞춘다.
-  mapY = (H - mapHeight) / 2;
+  // 배경을 화면 중앙 위치에서 캐릭터 높이(108px)만큼 아래로 이동
+  mapY = (H - mapHeight) / 2 + PLAYER_H;
 
   // 기존 바닥 기준 설정 유지
   const backgroundFloorY = mapY + 392 * MAP_SCALE;
@@ -625,8 +624,7 @@ function draw() {
     return;
   }
 
-  // 배경 이미지의 왼쪽을 화면 왼쪽에 두고,
-  // 세로 위치는 화면 중앙을 기준으로 표시한다.
+  // 배경 이미지 표시
   if (school.complete && school.naturalWidth > 0) {
     ctx.drawImage(
       school,
