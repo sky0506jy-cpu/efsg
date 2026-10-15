@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -7,20 +8,44 @@
 <style>
 * { box-sizing: border-box; }
 html, body {
-  margin: 0; width: 100%; height: 100%;
-  overflow: hidden; background: #101525; font-family: sans-serif;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #101525;
+  font-family: sans-serif;
 }
-canvas { display: block; width: 100vw; height: 100vh; }
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
 #help {
-  position: fixed; top: 12px; left: 12px; z-index: 2;
-  padding: 10px 14px; border-radius: 10px;
-  color: white; background: #000b; line-height: 1.6; font-size: 14px;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: white;
+  background: #000b;
+  line-height: 1.6;
+  font-size: 14px;
   pointer-events: none;
 }
 #nextFloor {
-  display: none; position: fixed; top: 15px; right: 15px; z-index: 3;
-  padding: 13px 20px; border: 0; border-radius: 10px;
-  background: #ffd34e; font-size: 17px; font-weight: bold; cursor: pointer;
+  display: none;
+  position: fixed;
+  top: 15px;
+  right: 15px;
+  z-index: 3;
+  padding: 13px 20px;
+  border: 0;
+  border-radius: 10px;
+  background: #ffd34e;
+  font-size: 17px;
+  font-weight: bold;
+  cursor: pointer;
 }
 </style>
 </head>
@@ -30,10 +55,13 @@ canvas { display: block; width: 100vw; height: 100vh; }
   Space / ↑ : 점프<br>
   장애물에 닿으면 목숨 차감 · 목숨 3개 소진 시 현재 층 재시작
 </div>
+
 <button id="nextFloor">다음 층(아래층)으로 내려가기 ▶</button>
 <canvas id="game"></canvas>
 
 <script>
+"use strict";
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const nextButton = document.getElementById("nextFloor");
@@ -46,39 +74,49 @@ school.src = "./school.png";
 character.src = "./character.png";
 assets.src = "./assets.png";
 
-const keys = {};
-let W = innerWidth, H = innerHeight;
+const keys = Object.create(null);
+
+let W = innerWidth;
+let H = innerHeight;
 let dpr = devicePixelRatio || 1;
-let ready = false, finished = false, lastTime = 0;
+
+let ready = false;
+let finished = false;
+let lastTime = 0;
+let imageError = "";
 
 let currentFloor = 4;
 const MAX_LIVES = 3;
 let lives = MAX_LIVES;
 
-let mapWidth = 0, mapHeight = 0, mapY = 0, floorY = 0, cameraX = 0;
+let mapWidth = 0;
+let mapHeight = 0;
+let mapY = 0;
+let floorY = 0;
+let cameraX = 0;
 
-// 기존 배경 크기 유지
+// 기존 확대 설정 유지
 const MAP_SCALE = 3.5;
 const PLAYER_W = 82;
 const PLAYER_H = 108;
 
 const player = {
-  x: 35, y: 0, w: PLAYER_W, h: PLAYER_H,
-  speed: 5, facing: 1, frame: 0, animTime: 0, moving: false,
-  velocityY: 0, jumpPower: 14, onGround: false
+  x: 35,
+  y: 0,
+  w: PLAYER_W,
+  h: PLAYER_H,
+  speed: 5,
+  facing: 1,
+  frame: 0,
+  animTime: 0,
+  moving: false,
+  velocityY: 0,
+  jumpPower: 14,
+  onGround: false
 };
 
 let platforms = [];
 let hazards = [];
-
-/*
-  레벨 생성 원칙
-  1. 발판이 서로 겹치지 않도록 생성한다.
-  2. 플레이어가 점프로 도달할 수 있는 높이와 거리를 유지한다.
-  3. 바닥 장애물 뒤에는 점프할 공간을 확보한다.
-  4. 층이 내려갈수록 발판 간격과 장애물 빈도를 조금씩 높인다.
-  5. 난수는 사용하지만 플레이 가능한 경로를 먼저 만든다.
-*/
 
 function randomRange(min, max) {
   return min + Math.random() * (max - min);
@@ -95,18 +133,12 @@ function fnMapGenerate() {
   if (!mapWidth || !floorY) return;
 
   const difficulty = 4 - currentFloor;
-
-  // 시작과 도착 구간은 충분히 확보한다.
   const startX = 300;
   const endX = mapWidth - 430;
   const usableWidth = endX - startX;
 
   if (usableWidth <= 0) return;
 
-  /*
-    플레이어 점프 물리 기준으로 높이 차이를 제한한다.
-    발판은 이전 발판에서 무리 없이 점프할 수 있는 범위에 둔다.
-  */
   const platformCount = Math.max(
     4,
     Math.floor(usableWidth / (560 - difficulty * 35))
@@ -119,30 +151,31 @@ function fnMapGenerate() {
     const remaining = platformCount - i;
     const remainingWidth = endX - lastX;
 
-    // 남은 거리를 고려해 발판 사이 간격을 정한다.
     const minGap = 155 + difficulty * 8;
     const maxGap = Math.min(
       300 + difficulty * 18,
       remainingWidth / Math.max(1, remaining)
     );
 
-    const gap = randomRange(minGap, Math.max(minGap + 10, maxGap));
-    let px = lastX + gap;
+    const gap = randomRange(
+      minGap,
+      Math.max(minGap + 10, maxGap)
+    );
 
-    // 마지막 발판이 출구 근처를 지나치지 않게 한다.
+    let px = lastX + gap;
     px = Math.min(px, endX - 180);
 
-    // 서로 겹치지 않는 크기의 발판
     const widthChoices = [115, 135, 155, 180, 205];
     const pw = widthChoices[randomInt(0, widthChoices.length - 1)];
 
-    // 이전 발판보다 지나치게 높거나 낮아지지 않도록 제한
     const verticalChange = randomInt(-65, 65);
     let py = lastY + verticalChange;
 
-    py = Math.max(floorY - 205, Math.min(floorY - 65, py));
+    py = Math.max(
+      floorY - 205,
+      Math.min(floorY - 65, py)
+    );
 
-    // 발판끼리 겹치거나 너무 가까워지는 경우 간격을 확보한다.
     if (px < lastX + 125) {
       px = lastX + 125;
     }
@@ -151,31 +184,28 @@ function fnMapGenerate() {
       px = endX - pw;
     }
 
-    // 이전 발판과 수평 간격이 너무 크면 줄인다.
     const maxReachGap = 255 + difficulty * 8;
+
     if (px - (lastX + 150) > maxReachGap) {
       px = lastX + 150 + maxReachGap;
     }
 
-    platforms.push({
-      x: px,
-      y: py,
-      w: pw,
-      h: 30,
-      type: Math.random() < 0.25 ? "small" : "normal"
-    });
+    if (px > lastX && px + pw <= endX) {
+      platforms.push({
+        x: px,
+        y: py,
+        w: pw,
+        h: 30,
+        type: Math.random() < 0.25 ? "small" : "normal"
+      });
 
-    lastX = px;
-    lastY = py;
+      lastX = px;
+      lastY = py;
+    }
 
-    if (px >= endX - 180) break;
+    if (lastX >= endX - 180) break;
   }
 
-  /*
-    바닥 장애물 배치.
-    발판 바로 아래나 시작 지점에 겹쳐 놓지 않는다.
-    장애물 사이에는 반드시 이동할 수 있는 공간을 둔다.
-  */
   const hazardStart = 250;
   const hazardEnd = mapWidth - 260;
   const hazardSpacingMin = Math.max(300, 470 - difficulty * 28);
@@ -190,7 +220,6 @@ function fnMapGenerate() {
     const hw = randomInt(45, 68);
     const hh = randomInt(34, 44);
 
-    // 발판의 수직 투영 구간 바로 아래에는 장애물을 만들지 않는다.
     const underPlatform = platforms.some(p =>
       hx + hw > p.x - 35 &&
       hx < p.x + p.w + 35 &&
@@ -207,13 +236,12 @@ function fnMapGenerate() {
       });
     }
 
-    hx += randomRange(hazardSpacingMin, hazardSpacingMax);
+    hx += randomRange(
+      hazardSpacingMin,
+      hazardSpacingMax
+    );
   }
 
-  /*
-    높은 층 난이도에서는 일부 발판 위에 장애물을 추가한다.
-    발판 전체를 막지 않고 착지할 수 있는 영역을 남긴다.
-  */
   const platformHazardChance = 0.08 + difficulty * 0.055;
 
   for (const p of platforms) {
@@ -237,7 +265,6 @@ function fnMapGenerate() {
     });
   }
 
-  // 위치순으로 정렬해 충돌 판정을 안정적으로 처리한다.
   platforms.sort((a, b) => a.x - b.x);
   hazards.sort((a, b) => a.x - b.x);
 }
@@ -253,6 +280,7 @@ function resize() {
   canvas.style.height = H + "px";
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
   setup();
 }
 
@@ -262,16 +290,30 @@ function setup() {
     return;
   }
 
-  mapWidth = Math.max(W + 1, school.naturalWidth * MAP_SCALE);
-  mapHeight = school.naturalHeight * MAP_SCALE;
-  mapY = Math.max(0, (H - mapHeight) / 2);
+  mapWidth = Math.max(
+    W + 1,
+    school.naturalWidth * MAP_SCALE
+  );
 
-  // 배경 원본에서 복도 바닥이 있는 높이에 맞춘다.
-  floorY = mapY + 392 * MAP_SCALE;
+  mapHeight = school.naturalHeight * MAP_SCALE;
+
+  // 확대된 배경을 화면 위쪽부터 그린다.
+  mapY = 0;
+
+  /*
+    바닥 위치는 배경 원본의 392px 지점을 기준으로 계산한다.
+    화면 밖에 캐릭터가 시작하지 않도록 화면 높이도 고려한다.
+  */
+  const backgroundFloorY = mapY + 392 * MAP_SCALE;
+  floorY = Math.min(backgroundFloorY, H - PLAYER_H - 10);
 
   fnMapGenerate();
 
-  player.x = Math.max(0, Math.min(player.x, mapWidth - player.w));
+  player.x = Math.max(
+    0,
+    Math.min(player.x, mapWidth - player.w)
+  );
+
   player.y = floorY - player.h;
   player.velocityY = 0;
   player.onGround = true;
@@ -282,14 +324,25 @@ function setup() {
   );
 
   ready = true;
+  imageError = "";
 }
 
 school.onload = setup;
 character.onload = setup;
-assets.onload = () => {};
-school.onerror = () => console.error("school.png를 불러오지 못했습니다.");
-character.onerror = () => console.error("character.png를 불러오지 못했습니다.");
-assets.onerror = () => console.error("assets.png를 불러오지 못했습니다.");
+
+school.onerror = () => {
+  imageError = "school.png 파일을 불러오지 못했습니다.";
+  ready = false;
+};
+
+character.onerror = () => {
+  imageError = "character.png 파일을 불러오지 못했습니다.";
+  ready = false;
+};
+
+assets.onerror = () => {
+  console.error("assets.png를 불러오지 못했습니다. 기본 도형으로 표시합니다.");
+};
 
 addEventListener("resize", resize);
 resize();
@@ -302,14 +355,16 @@ addEventListener("keydown", e => {
     e.preventDefault();
   }
 
-  const jumpPressed = e.code === "Space" || e.key === "ArrowUp";
+  const jumpPressed =
+    e.code === "Space" || e.key === "ArrowUp";
 
   if (
     jumpPressed &&
     !keys[e.code] &&
     !keys[e.key] &&
     player.onGround &&
-    !finished
+    !finished &&
+    ready
   ) {
     player.velocityY = -player.jumpPower;
     player.onGround = false;
@@ -390,7 +445,11 @@ function update(dt) {
     player.facing = -1;
   }
 
-  player.x = Math.max(0, Math.min(player.x, mapWidth - player.w));
+  player.x = Math.max(
+    0,
+    Math.min(player.x, mapWidth - player.w)
+  );
+
   player.moving = Math.abs(player.x - oldX) > 0;
 
   const previousBottom = player.y + player.h;
@@ -399,14 +458,12 @@ function update(dt) {
   player.velocityY += 0.65 * factor;
   player.y += player.velocityY * factor;
 
-  // 바닥 착지
   if (player.y + player.h >= floorY) {
     player.y = floorY - player.h;
     player.velocityY = 0;
     player.onGround = true;
   }
 
-  // 발판은 위에서 내려올 때만 착지한다.
   if (player.velocityY >= 0) {
     for (const p of platforms) {
       const overlapX =
@@ -426,7 +483,6 @@ function update(dt) {
     }
   }
 
-  // 장애물 충돌 판정
   const hitbox = {
     x: player.x + 12,
     y: player.y + 12,
@@ -448,7 +504,6 @@ function update(dt) {
     }
   }
 
-  // 달리기 애니메이션
   if (player.moving && player.onGround) {
     player.animTime += dt;
 
@@ -503,7 +558,6 @@ function drawHazard(h) {
   const x = h.x - cameraX;
 
   if (h.type === "platformSpike") {
-    // 발판 위 장애물
     ctx.fillStyle = "#ff654f";
     ctx.beginPath();
     ctx.moveTo(x, h.y + h.h);
@@ -564,7 +618,11 @@ function draw() {
   if (!ready) {
     ctx.fillStyle = "white";
     ctx.font = "18px sans-serif";
-    ctx.fillText("이미지를 불러오는 중...", 20, 60);
+    ctx.fillText(
+      imageError || "이미지를 불러오는 중...",
+      20,
+      60
+    );
     return;
   }
 
@@ -576,21 +634,20 @@ function draw() {
     mapHeight
   );
 
-  // 발판
   for (const p of platforms) {
-    if (p.x - cameraX < W + 150 && p.x - cameraX + p.w > -150) {
+    if (p.x - cameraX < W + 150 &&
+        p.x - cameraX + p.w > -150) {
       drawPlatform(p);
     }
   }
 
-  // 장애물
   for (const h of hazards) {
-    if (h.x - cameraX < W + 150 && h.x - cameraX + h.w > -150) {
+    if (h.x - cameraX < W + 150 &&
+        h.x - cameraX + h.w > -150) {
       drawHazard(h);
     }
   }
 
-  // 캐릭터 스프라이트: 4열 x 2행
   const frameW = character.naturalWidth / 4;
   const frameH = character.naturalHeight / 2;
   const sx = (player.frame % 4) * frameW;
@@ -616,7 +673,6 @@ function draw() {
 
   ctx.restore();
 
-  // UI
   ctx.textAlign = "left";
   ctx.fillStyle = "white";
   ctx.font = "bold 22px sans-serif";
@@ -642,7 +698,8 @@ function draw() {
       currentFloor > 1
         ? `${currentFloor}층 복도 끝에 도착했다! 아래층으로!`
         : "🎉 1층 탈출 성공! 야자 탈출 완료!",
-      W / 2, H / 2
+      W / 2,
+      H / 2
     );
 
     ctx.textAlign = "left";
@@ -650,12 +707,13 @@ function draw() {
 }
 
 function loop(time) {
-  const dt = lastTime ? Math.min(time - lastTime, 50) : 16.67;
-  lastTime = time;
+  const dt = lastTime
+    ? Math.min(time - lastTime, 50)
+    : 16.67;
 
+  lastTime = time;
   update(dt);
   draw();
-
   requestAnimationFrame(loop);
 }
 
