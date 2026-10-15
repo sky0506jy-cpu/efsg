@@ -297,8 +297,8 @@ function setup() {
 
   mapHeight = school.naturalHeight * MAP_SCALE;
 
-  // 배경을 화면 중앙 위치에서 캐릭터 높이(108px)만큼 아래로 이동
-  mapY = (H - mapHeight) / 2 + PLAYER_H;
+  // 배경을 이전 위치보다 추가로 108px 아래로 이동
+  mapY = (H - mapHeight) / 2 + PLAYER_H * 2;
 
   // 기존 바닥 기준 설정 유지
   const backgroundFloorY = mapY + 392 * MAP_SCALE;
