@@ -102,6 +102,11 @@ const MAP_SCALE = 3.5;
 const PLAYER_W = 82;
 const PLAYER_H = 108;
 
+// 점프가 도달할 수 있는 범위를 고려한 설정
+const MAX_JUMP_GAP = 145;
+const MIN_PLATFORM_GAP = 65;
+const PLATFORM_HEIGHT = 30;
+
 const player = {
   x: 35,
   y: 0,
@@ -134,116 +139,149 @@ function fnMapGenerate() {
 
   if (!mapWidth || !floorY) return;
 
-  // 시작 지점: 안전하게 출발할 수 있는 넓은 발판
+  const startX = 0;
+  const endX = mapWidth - 180;
+
+  // 시작 발판
   platforms.push({
-    x: 0,
+    x: startX,
     y: floorY,
     w: 235,
-    h: 30,
+    h: PLATFORM_HEIGHT,
     type: "start"
   });
 
-  // 층이 낮아질수록 조금씩 어려워짐
-  const difficulty = 5 - currentFloor;
-  const startX = 235;
-  const endX = mapWidth - 430;
-  const usableWidth = endX - startX;
+  // 끝 발판: 출구에 반드시 연결
+  platforms.push({
+    x: Math.max(235, endX - 100),
+    y: floorY - 35,
+    w: Math.max(180, mapWidth - Math.max(235, endX - 100)),
+    h: PLATFORM_HEIGHT,
+    type: "finish"
+  });
 
-  if (usableWidth <= 0) return;
+  const finishPlatform = platforms[1];
+  const finishX = finishPlatform.x;
 
-  const platformCount = Math.max(
-    4,
-    Math.floor(usableWidth / (530 - difficulty * 20))
-  );
+  // 출발 발판부터 끝 발판까지 일정 간격으로 연결
+  let lastX = 235;
+  let lastY = floorY - 45;
 
-  let lastX = startX;
-  let lastY = floorY - randomInt(55, 80);
+  const difficulty = 4 - currentFloor;
 
-  for (let i = 0; i < platformCount; i++) {
-    const remaining = platformCount - i;
-    const remainingWidth = endX - lastX;
+  while (lastX + 120 < finishX) {
+    const remaining = finishX - lastX;
 
-    // 발판 간격을 조금 넓혀 난이도를 높임
-    const minGap = 165 + difficulty * 7;
-    const maxGap = Math.min(
-      285 + difficulty * 10,
-      remainingWidth / Math.max(1, remaining)
+    // 간격을 안전한 범위로 제한
+    const gap = Math.min(
+      randomInt(75, 115 + difficulty * 5),
+      remaining - 100
     );
 
-    const gap = randomRange(
-      minGap,
-      Math.max(minGap + 10, maxGap)
-    );
+    if (gap < MIN_PLATFORM_GAP) break;
 
-    let px = lastX + gap;
-    px = Math.min(px, endX - 180);
+    const px = lastX + gap;
+    const pw = randomInt(115, 165);
 
-    const widthChoices = [110, 125, 145, 165, 190];
-    const pw = widthChoices[randomInt(0, widthChoices.length - 1)];
-
-    const verticalChange = randomInt(-45, 45);
+    // 높이 차이는 작게 제한
+    const verticalChange = randomInt(-22, 22);
     let py = lastY + verticalChange;
 
-    // 발판을 복도 바닥 기준으로 배치
     py = Math.max(
-      floorY - 190,
-      Math.min(floorY - 45, py)
+      floorY - 105,
+      Math.min(floorY - 25, py)
     );
 
-    if (px < lastX + 120) {
-      px = lastX + 120;
-    }
+    // 다음 발판까지 점프 가능한 수평 거리를 고려
+    platforms.push({
+      x: px,
+      y: py,
+      w: Math.min(pw, finishX - px),
+      h: PLATFORM_HEIGHT,
+      type: Math.random() < 0.3 ? "small" : "normal"
+    });
 
-    if (px + pw > endX) {
-      px = endX - pw;
-    }
+    lastX = px + Math.min(pw, finishX - px);
+    lastY = py;
 
-    // 점프할 수 있는 범위를 크게 벗어나지 않게 제한
-    const maxReachGap = 245 + difficulty * 5;
-
-    if (px - (lastX + 150) > maxReachGap) {
-      px = lastX + 150 + maxReachGap;
-    }
-
-    if (px > lastX && px + pw <= endX) {
-      platforms.push({
-        x: px,
-        y: py,
-        w: pw,
-        h: 30,
-        type: Math.random() < 0.3 ? "small" : "normal"
-      });
-
-      lastX = px;
-      lastY = py;
-    }
-
-    if (lastX >= endX - 180) break;
+    if (platforms.length > 500) break;
   }
 
-  // 복도 바닥의 가시 장애물은 시작 발판에 겹치지 않도록 배치
-  const hazardStart = 250;
-  const hazardEnd = mapWidth - 260;
-  const hazardSpacingMin = Math.max(320, 450 - difficulty * 15);
-  const hazardSpacingMax = Math.max(
-    hazardSpacingMin + 40,
-    620 - difficulty * 20
-  );
+  // 끝 발판과 연결되는 중간 발판이 부족하면 보충
+  let previous = platforms[0];
 
-  let hx = hazardStart + randomRange(100, 180);
+  const ordered = platforms
+    .filter(p => p.type !== "finish")
+    .sort((a, b) => a.x - b.x);
+
+  for (const next of ordered.slice(1)) {
+    const gap = next.x - (previous.x + previous.w);
+
+    if (gap > MAX_JUMP_GAP) {
+      const count = Math.ceil(gap / 110);
+
+      for (let i = 1; i < count; i++) {
+        const px = previous.x + previous.w +
+          (gap / count) * i - 45;
+
+        const py = Math.max(
+          floorY - 100,
+          Math.min(floorY - 25, previous.y)
+        );
+
+        platforms.push({
+          x: px,
+          y: py,
+          w: 100,
+          h: PLATFORM_HEIGHT,
+          type: "normal"
+        });
+      }
+    }
+
+    previous = next;
+  }
+
+  // 끝 발판 직전에도 발판이 이어지도록 보충
+  platforms.sort((a, b) => a.x - b.x);
+
+  let lastPlatform = platforms[platforms.length - 2];
+
+  if (lastPlatform) {
+    while (
+      finishPlatform.x -
+      (lastPlatform.x + lastPlatform.w) >
+      MAX_JUMP_GAP
+    ) {
+      const px = lastPlatform.x + lastPlatform.w + 80;
+
+      platforms.push({
+        x: px,
+        y: floorY - 45,
+        w: 100,
+        h: PLATFORM_HEIGHT,
+        type: "normal"
+      });
+
+      lastPlatform = platforms[platforms.length - 1];
+    }
+  }
+
+  // 바닥 장애물: 시작과 끝에는 안전 구역 확보
+  const hazardStart = 270;
+  const hazardEnd = finishPlatform.x - 100;
+  let hx = hazardStart + randomInt(40, 100);
 
   while (hx < hazardEnd) {
-    const hw = randomInt(45, 65);
-    const hh = randomInt(34, 42);
+    const hw = randomInt(38, 55);
+    const hh = randomInt(30, 40);
 
-    // 발판 바로 아래나 시작 발판 위에 장애물이 겹치지 않게 함
-    const underPlatform = platforms.some(p =>
+    const nearPlatform = platforms.some(p =>
       hx + hw > p.x - 25 &&
-      hx < p.x + p.w + 25 &&
-      p.y < floorY - 20
+      hx < p.x + p.w + 25
     );
 
-    if (!underPlatform) {
+    if (!nearPlatform) {
       hazards.push({
         x: hx,
         y: floorY - hh,
@@ -253,33 +291,28 @@ function fnMapGenerate() {
       });
     }
 
-    hx += randomRange(
-      hazardSpacingMin,
-      hazardSpacingMax
-    );
+    hx += randomInt(280, 380);
   }
 
-  // 발판 위에도 가끔 장애물 추가
-  const platformHazardChance = 0.12 + difficulty * 0.035;
-
+  // 일부 발판 위 장애물
   for (const p of platforms) {
-    if (p.type === "start") continue;
-    if (Math.random() > platformHazardChance) continue;
-    if (p.w < 145) continue;
+    if (
+      p.type === "start" ||
+      p.type === "finish" ||
+      p.w < 155 ||
+      Math.random() > 0.1
+    ) {
+      continue;
+    }
 
-    const hw = randomInt(28, 38);
-    const margin = 18;
-
-    const hx = p.x + randomRange(
-      margin,
-      Math.max(margin + 1, p.w - hw - margin)
-    );
+    const hw = 28;
+    const hx = p.x + randomInt(25, Math.max(26, p.w - hw - 20));
 
     hazards.push({
       x: hx,
-      y: p.y - 30,
+      y: p.y - 28,
       w: hw,
-      h: 30,
+      h: 28,
       type: "platformSpike"
     });
   }
@@ -315,8 +348,6 @@ function setup() {
   );
 
   mapHeight = school.naturalHeight * MAP_SCALE;
-
-  // 기존 배경 위치 유지
   mapY = (H - mapHeight) / 2 + PLAYER_H * 2;
 
   const backgroundFloorY = mapY + 392 * MAP_SCALE;
@@ -330,7 +361,6 @@ function setup() {
   player.onGround = true;
 
   cameraX = 0;
-
   ready = true;
   imageError = "";
 }
@@ -410,7 +440,7 @@ function restartGame() {
   resetting = false;
 
   nextButton.style.display = "none";
-  nextButton.textContent = "다次 층(아래층)으로 내려가기 ▶";
+  nextButton.textContent = "다음 층(아래층)으로 내려가기 ▶";
 
   fnMapGenerate();
   resetPlayer();
@@ -427,7 +457,6 @@ function loseLife() {
     return;
   }
 
-  // 목숨이 남아 있으면 현재 층에서 다시 시작
   fnMapGenerate();
   resetPlayer();
   resetting = false;
@@ -485,7 +514,7 @@ function update(dt) {
   player.velocityY += 0.65 * factor;
   player.y += player.velocityY * factor;
 
-  // 발판 위에 착지하는 경우에만 안전하게 멈춤
+  // 발판 위로 내려올 때 착지
   if (player.velocityY >= 0) {
     for (const p of platforms) {
       const overlapX =
@@ -505,8 +534,14 @@ function update(dt) {
     }
   }
 
-  // 복도 바닥까지 떨어지면 목숨 차감
+  // 발판을 놓치고 바닥까지 떨어지면 목숨 차감
   if (player.y + player.h >= floorY && !player.onGround) {
+    loseLife();
+    return;
+  }
+
+  // 화면 아래로 완전히 떨어지는 경우도 처리
+  if (player.y > H + 100) {
     loseLife();
     return;
   }
