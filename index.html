@@ -6,7 +6,6 @@
 <title>야자 탈출</title>
 <style>
 * { box-sizing: border-box; }
-
 html, body {
   margin: 0;
   width: 100%;
@@ -15,13 +14,11 @@ html, body {
   background: #101525;
   font-family: sans-serif;
 }
-
 canvas {
   display: block;
   width: 100vw;
   height: 100vh;
 }
-
 #help {
   position: fixed;
   top: 12px;
@@ -35,7 +32,6 @@ canvas {
   font-size: 14px;
   pointer-events: none;
 }
-
 #nextFloor {
   display: none;
   position: fixed;
@@ -99,6 +95,7 @@ let mapY = 0;
 let floorY = 0;
 let cameraX = 0;
 
+// 기존 설정 유지
 const MAP_SCALE = 3.5;
 const PLAYER_W = 82;
 const PLAYER_H = 108;
@@ -299,8 +296,12 @@ function setup() {
   );
 
   mapHeight = school.naturalHeight * MAP_SCALE;
-  mapY = 0;
 
+  // 배경의 왼쪽은 시작점으로 유지하고,
+  // 배경의 세로 중앙을 화면의 세로 중앙에 맞춘다.
+  mapY = (H - mapHeight) / 2;
+
+  // 기존 바닥 기준 설정 유지
   const backgroundFloorY = mapY + 392 * MAP_SCALE;
   floorY = Math.min(backgroundFloorY, H - PLAYER_H - 10);
 
@@ -342,7 +343,6 @@ assets.onerror = () => {
 };
 
 addEventListener("resize", resize);
-
 resize();
 
 addEventListener("keydown", e => {
@@ -610,8 +610,6 @@ function drawHazard(h) {
 
 function draw() {
   ctx.clearRect(0, 0, W, H);
-
-  // 배경 이미지가 로드되지 않았으면 어두운 화면 대신 오류를 표시한다.
   ctx.fillStyle = "#101525";
   ctx.fillRect(0, 0, W, H);
 
@@ -627,25 +625,16 @@ function draw() {
     return;
   }
 
-  // 배경은 원본 이미지의 실제 크기를 기준으로 확대해서 그린다.
+  // 배경 이미지의 왼쪽을 화면 왼쪽에 두고,
+  // 세로 위치는 화면 중앙을 기준으로 표시한다.
   if (school.complete && school.naturalWidth > 0) {
     ctx.drawImage(
       school,
       -cameraX,
       mapY,
       school.naturalWidth * MAP_SCALE,
-      school.naturalHeight * MAP_SCALE
+      mapHeight
     );
-  } else {
-    ctx.fillStyle = "#dce8f5";
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.fillStyle = "#b8c8d9";
-    ctx.fillRect(0, floorY, W, H - floorY);
-
-    ctx.fillStyle = "#202b3e";
-    ctx.font = "18px sans-serif";
-    ctx.fillText("배경 이미지 school.png를 불러오지 못했습니다.", 20, 60);
   }
 
   for (const p of platforms) {
